@@ -1,0 +1,171 @@
+{
+  "profiles": {
+    "java_spring": {
+      "name": "Java Spring Boot",
+      "patterns": {
+        "sql": [
+          "@Query\\s*\\(\\s*[\"']([^\"']*)[\"']",
+          "createQuery\\s*\\(\\s*[\"']([^\"']*)[\"']",
+          "prepareStatement\\s*\\(\\s*[\"']([^\"']*)[\"']",
+          "JdbcTemplate.*query",
+          "EntityManager.*createQuery"
+        ],
+        "server": [
+          "server\\.port\\s*[=:]\\s*(\\d+)",
+          "spring\\.datasource\\.url\\s*[=:]\\s*[\"']?([^\"'\\s]+)",
+          "management\\.server\\.port\\s*[=:]\\s*(\\d+)"
+        ]
+      },
+      "file_types": [".java", ".properties", ".yml", ".yaml", ".xml"],
+      "keywords": ["spring", "boot", "jpa", "hibernate", "repository"]
+    },
+    
+    "python_django": {
+      "name": "Python Django",
+      "patterns": {
+        "sql": [
+          "objects\\.raw\\s*\\(\\s*[\"']([^\"']*)[\"']",
+          "cursor\\.execute\\s*\\(\\s*[\"']([^\"']*)[\"']",
+          "connection\\.execute\\s*\\(\\s*[\"']([^\"']*)[\"']"
+        ],
+        "server": [
+          "DEBUG\\s*=\\s*(True|False)",
+          "ALLOWED_HOSTS\\s*=\\s*\\[([^\\]]+)\\]",
+          "DATABASE.*HOST.*[\"']([^\"']+)[\"']",
+          "DATABASE.*PORT.*[\"']?(\\d+)[\"']?"
+        ]
+      },
+      "file_types": [".py", ".html", ".txt"],
+      "keywords": ["django", "models", "views", "urls", "settings"]
+    },
+    
+    "nodejs_express": {
+      "name": "Node.js Express",
+      "patterns": {
+        "sql": [
+          "query\\s*\\(\\s*[`\"']([^`\"']*)[`\"']",
+          "execute\\s*\\(\\s*[`\"']([^`\"']*)[`\"']",
+          "sequelize\\.query"
+        ],
+        "server": [
+          "port.*[=:]\\s*(\\d+)",
+          "process\\.env\\.PORT",
+          "listen\\s*\\(\\s*(\\d+)",
+          "mongodb://([^/\\s:]+)(?::(\\d+))?"
+        ]
+      },
+      "file_types": [".js", ".ts", ".json", ".env"],
+      "keywords": ["express", "node", "npm", "package.json", "middleware"]
+    },
+    
+    "dotnet_core": {
+      "name": ".NET Core",
+      "patterns": {
+        "sql": [
+          "CommandText\\s*=\\s*[\"']([^\"']*)[\"']",
+          "SqlCommand\\s*\\(\\s*[\"']([^\"']*)[\"']",
+          "FromSqlRaw\\s*\\(\\s*[\"']([^\"']*)[\"']"
+        ],
+        "server": [
+          "\"Kestrel\".*\"Endpoints\"",
+          "\"ConnectionStrings\".*\"Server=([^;]+)",
+          "\"Urls\":\\s*[\"']([^\"']+)[\"']"
+        ]
+      },
+      "file_types": [".cs", ".json", ".config"],
+      "keywords": ["dotnet", "core", "mvc", "api", "entity"]
+    },
+    
+    "microservices": {
+      "name": "Microservices Architecture",
+      "patterns": {
+        "sql": [
+          "(?i)(?:select|insert|update|delete)\\s+.*?(?:from|into|table)",
+          "database.*query",
+          "sql.*statement"
+        ],
+        "server": [
+          "service.*url",
+          "endpoint.*address",
+          "api.*gateway",
+          "load.*balancer",
+          "discovery.*service"
+        ]
+      },
+      "file_types": [".yml", ".yaml", ".json", ".xml", ".properties"],
+      "keywords": ["kubernetes", "docker", "service", "gateway", "registry"]
+    },
+    
+    "cloud_native": {
+      "name": "Cloud Native Applications",
+      "patterns": {
+        "sql": [
+          "cloud.*sql",
+          "rds.*endpoint",
+          "cosmos.*db",
+          "dynamodb.*table"
+        ],
+        "server": [
+          "aws.*endpoint",
+          "azure.*servicebus",
+          "gcp.*function",
+          "lambda.*function",
+          "cloud.*run"
+        ]
+      },
+      "file_types": [".yml", ".yaml", ".tf", ".json"],
+      "keywords": ["aws", "azure", "gcp", "cloud", "lambda", "function"]
+    }
+  },
+  
+  "detection_rules": {
+    "java_spring": {
+      "required_files": ["pom.xml", "build.gradle", "application.properties"],
+      "required_keywords": ["spring", "@SpringBootApplication", "@RestController"],
+      "confidence_threshold": 0.7
+    },
+    "python_django": {
+      "required_files": ["manage.py", "settings.py", "requirements.txt"],
+      "required_keywords": ["django", "Django", "INSTALLED_APPS"],
+      "confidence_threshold": 0.7
+    },
+    "nodejs_express": {
+      "required_files": ["package.json", "server.js", "app.js"],
+      "required_keywords": ["express", "node", "npm"],
+      "confidence_threshold": 0.6
+    },
+    "dotnet_core": {
+      "required_files": [".csproj", "Program.cs", "Startup.cs"],
+      "required_keywords": ["dotnet", "Microsoft", "using System"],
+      "confidence_threshold": 0.7
+    }
+  },
+  
+  "fallback_strategies": {
+    "sql_extraction": [
+      "regex_pattern_matching",
+      "keyword_based_detection", 
+      "file_extension_heuristics",
+      "generic_llm_analysis"
+    ],
+    "server_extraction": [
+      "configuration_file_parsing",
+      "environment_variable_detection",
+      "docker_compose_analysis",
+      "generic_pattern_matching"
+    ]
+  },
+  
+  "validation_rules": {
+    "sql_queries": {
+      "min_length": 10,
+      "required_keywords": ["select", "insert", "update", "delete", "create", "alter", "drop"],
+      "forbidden_patterns": ["lorem ipsum", "example", "placeholder"]
+    },
+    "server_info": {
+      "valid_hosts": ["localhost", "127.0.0.1", ".*\\.com", ".*\\.net", ".*\\.org"],
+      "valid_ports": {"min": 1, "max": 65535},
+      "forbidden_hosts": ["example.com", "test.com", "placeholder"]
+    }
+  }
+}
