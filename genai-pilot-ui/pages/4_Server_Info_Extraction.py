@@ -67,22 +67,23 @@ def log_error(error_type, status_code, response_text, system_prompt, user_prompt
     }
     st.session_state['error_logs'].append(log_entry)
 
-def safechain_server_extraction(data, system_prompt, user_prompt, vector_query):
+def safechain_server_extraction(data, system_prompt, vector_query):
     """
-    Server-focused LLM extraction with detailed flow display
+    Enhanced server extraction following LLMUtil pattern with proper validation flow
     """
     st.subheader("🔍 Vector Search Results")
     st.info(f"**Vector Search Query Used:** `{vector_query}`")
     st.info(f"**Files Found:** {len(data['results'])}")
     
-    server_information = []
+    host_ports_array = []
     
     for i, result in enumerate(data['results'], 1):
         st.markdown(f"### 📄 Processing File {i}/{len(data['results'])}: `{result['metadata']['source']}`")
         
         codebase = result['page_content']
+        file_source = result['metadata']['source']
         
-        # Apply text cleaning for server extraction
+        # Apply text cleaning for server extraction (consistent with LLMUtil)
         original_length = len(codebase)
         codebase = codebase.replace("@aexp", "@aexps")
         codebase = codebase.replace("@", "")
@@ -91,155 +92,151 @@ def safechain_server_extraction(data, system_prompt, user_prompt, vector_query):
         st.write(f"**📊 Content Length:** {original_length} → {len(codebase)} characters (after cleaning)")
         
         # Display codebase content
-        with st.expander(f"📖 View Source Code - {result['metadata']['source']}", expanded=False):
-            _, extension = os.path.splitext(result['metadata']['source'])
+        with st.expander(f"📖 View Source Code - {file_source}", expanded=False):
+            _, extension = os.path.splitext(file_source)
             st.code(codebase, language=extension[1:] if extension else "text")
         
         if len(codebase) < 4:
             st.error("⚠️ Codebase content is too short to process.")
             continue
 
-        # Show LLM request details
-        st.write("**🤖 LLM Request Configuration:**")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.text_area("System Prompt:", system_prompt, height=100, disabled=True, key=f"sys_{i}")
-        with col2:
-            st.text_area("User Prompt:", user_prompt, height=100, disabled=True, key=f"user_{i}")
-
         url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
-        st.write(f"**🌐 API Endpoint:** `{url}`")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Step 1: Check if server information exists (following LLMUtil pattern)
+        st.write("**🔍 Step 1: Detecting Server Information**")
+        detection_prompt = "Given the provided code snippet, identify if there are server informations present showing host, port and database information? If none, reply back with 'no'. Else extract the server information. Place in a json with keys 'host', 'port', 'database name'. Reply with only the JSON. Make sure it's a valid JSON."
         
         payload = json.dumps({
             "system_prompt": system_prompt,
-            "user_prompt": user_prompt,
+            "user_prompt": detection_prompt,
             "codebase": codebase
         })
 
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        with st.spinner(f"🔄 Sending request to LLM for {result['metadata']['source']}..."):
+        with st.spinner(f"🔄 Detecting server info in {file_source}..."):
             try:
                 response = requests.request("POST", url, headers=HEADERS, data=payload, timeout=300)
                 
-                # Track 404 errors specifically for firewall blocking
+                # Handle HTTP errors
                 if response.status_code == 404:
                     st.error("❌ **404 Error: Request blocked by firewall**")
-                    log_404_error(system_prompt, user_prompt, codebase, 
-                                 result['metadata']['source'], url, timestamp)
-                    log_error("404_firewall_block", 404, response.text, system_prompt, user_prompt,
-                             codebase, result['metadata']['source'], url, timestamp)
-                    
-                    # Display immediate 404 info in UI
-                    with st.expander("🚨 404 Error Details", expanded=True):
-                        st.error("**Firewall blocked this request**")
-                        st.write(f"**File:** {result['metadata']['source']}")
-                        st.write(f"**URL:** {url}")
-                        st.write(f"**Timestamp:** {timestamp}")
-                        st.json({
-                            "system_prompt": system_prompt,
-                            "user_prompt": user_prompt,
-                            "codebase_length": len(codebase),
-                            "response_text": response.text
-                        })
-                    # Continue to next file instead of stopping
+                    log_404_error(system_prompt, detection_prompt, codebase, file_source, url, timestamp)
+                    log_error("404_firewall_block", 404, response.text, system_prompt, detection_prompt,
+                             codebase, file_source, url, timestamp)
                     continue
                     
                 elif response.status_code != 200:
                     st.error(f"❌ **HTTP {response.status_code} Error:** {response.text}")
                     log_error(f"http_{response.status_code}", response.status_code, response.text,
-                             system_prompt, user_prompt, codebase, result['metadata']['source'], 
-                             url, timestamp, {"headers": dict(response.headers)})
-                    
-                    # Show detailed error info but continue processing
-                    with st.expander(f"🔍 HTTP {response.status_code} Error Details", expanded=False):
-                        st.json({
-                            "status_code": response.status_code,
-                            "response_text": response.text,
-                            "response_headers": dict(response.headers),
-                            "file": result['metadata']['source'],
-                            "timestamp": timestamp
-                        })
+                             system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                     continue
-                    
-                # Handle successful HTTP response
+                
+                # Parse response
                 try:
                     response_json = response.json()
                 except json.JSONDecodeError as e:
                     st.error(f"❌ **Invalid JSON Response:** Could not parse response")
-                    log_error("invalid_json_response", 200, response.text, system_prompt, user_prompt,
-                             codebase, result['metadata']['source'], url, timestamp, 
-                             {"json_error": str(e)})
-                    with st.expander("🔍 Invalid JSON Response Details", expanded=False):
-                        st.text_area("Raw Response:", response.text, height=150)
+                    log_error("invalid_json_response", 200, response.text, system_prompt, detection_prompt,
+                             codebase, file_source, url, timestamp, {"json_error": str(e)})
                     continue
                 
                 status_code = response_json.get('status_code', response.status_code)
                 
                 if status_code == 400:
-                    st.error(f"❌ **LLM API Error:** {response_json.get('message', 'Unknown error')}")
-                    log_error("llm_api_400", 400, response_json.get('message', 'Unknown error'),
-                             system_prompt, user_prompt, codebase, result['metadata']['source'],
-                             url, timestamp, {"full_response": response_json})
-                    
-                    with st.expander("🔍 LLM API Error Details", expanded=False):
-                        st.json(response_json)
+                    st.error(f"❌ **LLM API Error:** {response_json.get('output', 'Unknown error')}")
+                    log_error("llm_api_400", 400, response_json.get('output', 'Unknown error'),
+                             system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                     continue
-                else:
-                    st.success(f"✅ **Successfully processed:** {result['metadata']['source']}")
-                    output = response_json.get('output', '')
+                
+                # Process successful response
+                output = response_json.get('output', '')
+                
+                # Check if no server information found (following LLMUtil pattern)
+                if 'no' in output.lower() or 'No' in output:
+                    st.warning("⚠️ **No server information found in this file**")
+                    continue
+                
+                # Display raw output
+                with st.expander("🔍 Raw Detection Response", expanded=False):
+                    st.text_area("Raw Output:", output, height=100, key=f"raw_detect_{i}")
+                
+                # Try to parse the JSON extraction
+                try:
+                    json_document = json.loads(output)
+                    st.success("✅ **Server information detected!**")
+                    st.json(json_document)
+                except json.JSONDecodeError:
+                    st.error(f"❌ **Invalid JSON from LLM:** {output}")
+                    continue
+                
+                # Step 2: Validate the extracted server information (following LLMUtil pattern)
+                st.write("**✅ Step 2: Validating Server Information**")
+                validation_prompt = "Is this valid database server information? If yes, reply with 'yes'. If no, reply with 'no'."
+                
+                validation_payload = json.dumps({
+                    "system_prompt": system_prompt,
+                    "user_prompt": validation_prompt,
+                    "codebase": json.dumps(json_document)  # Pass the extracted JSON as codebase
+                })
+                
+                with st.spinner(f"🔄 Validating server info from {file_source}..."):
+                    validation_response = requests.request("POST", url, headers=HEADERS, data=validation_payload, timeout=300)
                     
-                    # Display raw LLM output first
-                    with st.expander("🔍 Raw LLM Response", expanded=False):
-                        st.text_area("Raw Output:", output, height=150, key=f"raw_{i}")
+                    if validation_response.status_code != 200:
+                        st.warning(f"⚠️ **Validation failed with HTTP {validation_response.status_code}** - accepting data anyway")
+                        # Accept the data even if validation fails
+                        host_ports_array.append(json_document)
+                        continue
                     
-                    # Try to parse server information
                     try:
-                        parsed_output = json.loads(output)
-                        if 'host_ports' in parsed_output and parsed_output['host_ports']:
-                            st.success(f"🎯 **Found {len(parsed_output['host_ports'])} server entries**")
-                            st.json(parsed_output['host_ports'])
-                            server_information.extend(parsed_output['host_ports'])
+                        validation_json = validation_response.json()
+                        validation_output = validation_json.get('output', '')
+                        
+                        if validation_json.get('status_code') == 400:
+                            st.warning(f"⚠️ **Validation API Error:** {validation_output} - accepting data anyway")
+                            host_ports_array.append(json_document)
+                        elif 'yes' in validation_output.lower():
+                            st.success("🎯 **Server information validated successfully!**")
+                            host_ports_array.append(json_document)
                         else:
-                            st.warning("⚠️ No server host/port information found in structured format")
-                            st.json(parsed_output)
-                            server_information.append({
-                                "file": result['metadata']['source'],
-                                "raw_output": output
-                            })
+                            st.error("❌ **Validation failed:** Server information deemed invalid")
+                            with st.expander("Validation Details", expanded=False):
+                                st.write(f"Validation response: {validation_output}")
+                            continue
+                            
                     except json.JSONDecodeError:
-                        st.warning("⚠️ LLM response is not valid JSON")
-                        st.text_area("Raw Output:", output, height=150, key=f"raw_fallback_{i}")
-                        server_information.append({
-                            "file": result['metadata']['source'],
-                            "raw_output": output
-                        })
+                        st.warning("⚠️ **Validation response unparseable** - accepting data anyway")
+                        host_ports_array.append(json_document)
                         
             except requests.exceptions.ConnectionError as e:
-                st.error(f"❌ **Connection Error:** Could not reach LLM API at {url}")
-                log_error("connection_error", None, str(e), system_prompt, user_prompt,
-                         codebase, result['metadata']['source'], url, timestamp)
-                # Continue to next file
+                st.error(f"❌ **Connection Error:** Could not reach LLM API")
+                log_error("connection_error", None, str(e), system_prompt, detection_prompt,
+                         codebase, file_source, url, timestamp)
                 continue
                 
             except requests.exceptions.Timeout as e:
                 st.warning(f"⏰ **Timeout Warning:** Request timed out after 300 seconds - continuing with next file")
-                log_error("timeout", None, f"Request timed out after 300 seconds: {str(e)}", 
-                         system_prompt, user_prompt, codebase, result['metadata']['source'], 
-                         url, timestamp)
-                # Continue to next file instead of stopping
+                log_error("timeout", None, f"Request timed out: {str(e)}", system_prompt, detection_prompt,
+                         codebase, file_source, url, timestamp)
                 continue
                 
             except Exception as e:
                 st.error(f"❌ **Unexpected Error:** {str(e)} - continuing with next file")
-                log_error("unexpected_error", None, str(e), system_prompt, user_prompt,
-                         codebase, result['metadata']['source'], url, timestamp)
-                # Continue to next file
+                log_error("unexpected_error", None, str(e), system_prompt, detection_prompt,
+                         codebase, file_source, url, timestamp)
                 continue
 
         st.markdown("---")
-
-    return server_information
+    
+    # Filter out duplicate entries (following LLMUtil pattern)
+    if host_ports_array:
+        st.info(f"🔄 **Filtering duplicates from {len(host_ports_array)} entries...**")
+        unique_servers = [dict(t) for t in {tuple(d.items()) for d in host_ports_array}]
+        if len(unique_servers) < len(host_ports_array):
+            st.info(f"🧹 **Removed {len(host_ports_array) - len(unique_servers)} duplicate entries**")
+        host_ports_array = unique_servers
+    
+    return host_ports_array
 
 def display_error_logs():
     """Display comprehensive error logs with debugging metadata"""
@@ -421,12 +418,21 @@ def main():
             help="Instructions for the AI about its role and context"
         )
         
-        user_prompt = st.text_area(
-            "👤 User Prompt:", 
-            value="Extract server host and port information from this code snippet. Return as JSON with 'host_ports' array containing objects with 'host' and 'port' fields. If no server information is found, return empty array.",
-            height=100,
-            help="Specific extraction instructions for server information"
-        )
+        st.info("📝 **Note:** User prompts are handled automatically by the extraction flow following the LLMUtil pattern")
+        
+        with st.expander("🔍 View Automatic Prompts Used", expanded=False):
+            st.text_area(
+                "Detection Prompt:", 
+                "Given the provided code snippet, identify if there are server informations present showing host, port and database information? If none, reply back with 'no'. Else extract the server information. Place in a json with keys 'host', 'port', 'database name'. Reply with only the JSON. Make sure it's a valid JSON.",
+                height=100,
+                disabled=True
+            )
+            st.text_area(
+                "Validation Prompt:", 
+                "Is this valid database server information? If yes, reply with 'yes'. If no, reply with 'no'.",
+                height=60,
+                disabled=True
+            )
         
         submit_button = st.form_submit_button(
             '🚀 Start Server Information Extraction', 
@@ -439,8 +445,8 @@ def main():
             st.error("❌ Please enter a codebase name")
         elif not vector_query.strip():
             st.error("❌ Please enter a vector search query")
-        elif not system_prompt.strip() or not user_prompt.strip():
-            st.error("❌ Both system and user prompts are required")
+        elif not system_prompt.strip():
+            st.error("❌ System prompt is required")
         else:
             try:
                 st.markdown("---")
@@ -466,7 +472,7 @@ def main():
                     st.subheader("🤖 Step 2: LLM Processing & Server Extraction")
                     
                     server_information = safechain_server_extraction(
-                        data, system_prompt, user_prompt, vector_query
+                        data, system_prompt, vector_query
                     )
                     
                     # Step 3: Final Results
@@ -474,24 +480,41 @@ def main():
                     if server_information:
                         st.success(f"✅ **Extraction completed successfully!** Found {len(server_information)} server entries")
                         
-                        # Summary
-                        summary = {
-                            "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "codebase": search_target,
-                            "vector_query": vector_query,
-                            "total_files_processed": len(data['results']),
-                            "total_servers_found": len(server_information),
-                            "server_details": server_information
+                        # Format output in the requested structure
+                        final_output = {
+                            "Server Information": server_information
                         }
                         
-                        st.json(summary)
+                        st.subheader("📊 Extracted Server Information")
+                        st.json(final_output)
+                        
+                        # Detailed summary
+                        summary = {
+                            "extraction_metadata": {
+                                "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "codebase": search_target,
+                                "vector_query": vector_query,
+                                "total_files_processed": len(data['results']),
+                                "total_servers_found": len(server_information)
+                            },
+                            "results": final_output
+                        }
                         
                         # Download results
                         results_json = json.dumps(summary, indent=2)
                         st.download_button(
-                            label="📥 Download Server Info as JSON",
+                            label="📥 Download Complete Results as JSON",
                             data=results_json,
                             file_name=f"server_extraction_{codebase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            mime="application/json"
+                        )
+                        
+                        # Download just the server information in the clean format
+                        clean_results_json = json.dumps(final_output, indent=2)
+                        st.download_button(
+                            label="📥 Download Server Info Only (Clean Format)",
+                            data=clean_results_json,
+                            file_name=f"server_info_clean_{codebase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             mime="application/json"
                         )
                         
