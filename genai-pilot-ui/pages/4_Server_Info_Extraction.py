@@ -10,9 +10,11 @@ LOCAL_BACKEND_URL = "http://localhost:8000"
 LLM_API_ENDPOINT = "/LLM-API"
 HEADERS = {"Content-Type": "application/json"}
 
-# Initialize session state for 404 logs
+# Initialize session state for error tracking
 if '404_logs' not in st.session_state:
     st.session_state['404_logs'] = []
+if 'error_logs' not in st.session_state:
+    st.session_state['error_logs'] = []
 
 def vector_search_simulation(codebase, query, count):
     """
@@ -42,6 +44,28 @@ def log_404_error(system_prompt, user_prompt, codebase, file_source, url, timest
         "full_codebase_length": len(codebase)
     }
     st.session_state['404_logs'].append(log_entry)
+
+def log_error(error_type, status_code, response_text, system_prompt, user_prompt, codebase, file_source, url, timestamp, additional_info=None):
+    """Log any non-200 response with full debugging metadata"""
+    log_entry = {
+        "timestamp": timestamp,
+        "error_type": error_type,
+        "status_code": status_code,
+        "response_text": response_text[:1000] + "..." if len(str(response_text)) > 1000 else str(response_text),
+        "file_source": file_source,
+        "url_attempted": url,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "codebase_snippet": codebase[:500] + "..." if len(codebase) > 500 else codebase,
+        "full_codebase_length": len(codebase),
+        "payload_size": len(json.dumps({
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "codebase": codebase
+        })),
+        "additional_info": additional_info or {}
+    }
+    st.session_state['error_logs'].append(log_entry)
 
 def safechain_server_extraction(data, system_prompt, user_prompt, vector_query):
     """
@@ -96,13 +120,15 @@ def safechain_server_extraction(data, system_prompt, user_prompt, vector_query):
         
         with st.spinner(f"🔄 Sending request to LLM for {result['metadata']['source']}..."):
             try:
-                response = requests.request("POST", url, headers=HEADERS, data=payload, timeout=30)
+                response = requests.request("POST", url, headers=HEADERS, data=payload, timeout=300)
                 
                 # Track 404 errors specifically for firewall blocking
                 if response.status_code == 404:
                     st.error("❌ **404 Error: Request blocked by firewall**")
                     log_404_error(system_prompt, user_prompt, codebase, 
                                  result['metadata']['source'], url, timestamp)
+                    log_error("404_firewall_block", 404, response.text, system_prompt, user_prompt,
+                             codebase, result['metadata']['source'], url, timestamp)
                     
                     # Display immediate 404 info in UI
                     with st.expander("🚨 404 Error Details", expanded=True):
@@ -113,19 +139,51 @@ def safechain_server_extraction(data, system_prompt, user_prompt, vector_query):
                         st.json({
                             "system_prompt": system_prompt,
                             "user_prompt": user_prompt,
-                            "codebase_length": len(codebase)
+                            "codebase_length": len(codebase),
+                            "response_text": response.text
                         })
+                    # Continue to next file instead of stopping
                     continue
                     
                 elif response.status_code != 200:
                     st.error(f"❌ **HTTP {response.status_code} Error:** {response.text}")
+                    log_error(f"http_{response.status_code}", response.status_code, response.text,
+                             system_prompt, user_prompt, codebase, result['metadata']['source'], 
+                             url, timestamp, {"headers": dict(response.headers)})
+                    
+                    # Show detailed error info but continue processing
+                    with st.expander(f"🔍 HTTP {response.status_code} Error Details", expanded=False):
+                        st.json({
+                            "status_code": response.status_code,
+                            "response_text": response.text,
+                            "response_headers": dict(response.headers),
+                            "file": result['metadata']['source'],
+                            "timestamp": timestamp
+                        })
                     continue
                     
-                response_json = response.json()
+                # Handle successful HTTP response
+                try:
+                    response_json = response.json()
+                except json.JSONDecodeError as e:
+                    st.error(f"❌ **Invalid JSON Response:** Could not parse response")
+                    log_error("invalid_json_response", 200, response.text, system_prompt, user_prompt,
+                             codebase, result['metadata']['source'], url, timestamp, 
+                             {"json_error": str(e)})
+                    with st.expander("🔍 Invalid JSON Response Details", expanded=False):
+                        st.text_area("Raw Response:", response.text, height=150)
+                    continue
+                
                 status_code = response_json.get('status_code', response.status_code)
                 
                 if status_code == 400:
                     st.error(f"❌ **LLM API Error:** {response_json.get('message', 'Unknown error')}")
+                    log_error("llm_api_400", 400, response_json.get('message', 'Unknown error'),
+                             system_prompt, user_prompt, codebase, result['metadata']['source'],
+                             url, timestamp, {"full_response": response_json})
+                    
+                    with st.expander("🔍 LLM API Error Details", expanded=False):
+                        st.json(response_json)
                     continue
                 else:
                     st.success(f"✅ **Successfully processed:** {result['metadata']['source']}")
@@ -157,67 +215,151 @@ def safechain_server_extraction(data, system_prompt, user_prompt, vector_query):
                             "raw_output": output
                         })
                         
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.ConnectionError as e:
                 st.error(f"❌ **Connection Error:** Could not reach LLM API at {url}")
-            except requests.exceptions.Timeout:
-                st.error(f"❌ **Timeout Error:** Request timed out after 30 seconds")
+                log_error("connection_error", None, str(e), system_prompt, user_prompt,
+                         codebase, result['metadata']['source'], url, timestamp)
+                # Continue to next file
+                continue
+                
+            except requests.exceptions.Timeout as e:
+                st.warning(f"⏰ **Timeout Warning:** Request timed out after 300 seconds - continuing with next file")
+                log_error("timeout", None, f"Request timed out after 300 seconds: {str(e)}", 
+                         system_prompt, user_prompt, codebase, result['metadata']['source'], 
+                         url, timestamp)
+                # Continue to next file instead of stopping
+                continue
+                
             except Exception as e:
-                st.error(f"❌ **Unexpected Error:** {str(e)}")
+                st.error(f"❌ **Unexpected Error:** {str(e)} - continuing with next file")
+                log_error("unexpected_error", None, str(e), system_prompt, user_prompt,
+                         codebase, result['metadata']['source'], url, timestamp)
+                # Continue to next file
+                continue
 
         st.markdown("---")
 
     return server_information
 
-def display_404_logs():
-    """Display comprehensive 404 error logs"""
-    if len(st.session_state['404_logs']) == 0:
-        st.info("🎉 No 404 errors logged yet!")
+def display_error_logs():
+    """Display comprehensive error logs with debugging metadata"""
+    total_404s = len(st.session_state['404_logs'])
+    total_errors = len(st.session_state['error_logs'])
+    
+    if total_404s == 0 and total_errors == 0:
+        st.info("🎉 No errors logged yet!")
         return
     
-    st.error(f"🚨 {len(st.session_state['404_logs'])} 404 Errors Logged")
+    # Summary metrics
+    if total_404s > 0:
+        st.error(f"🚨 {total_404s} 404 Errors")
+    if total_errors > 0:
+        st.warning(f"⚠️ {total_errors} Other Errors")
     
-    # Download logs as JSON
-    logs_json = json.dumps(st.session_state['404_logs'], indent=2)
+    # Download all logs as JSON
+    all_logs = {
+        "404_errors": st.session_state['404_logs'],
+        "other_errors": st.session_state['error_logs'],
+        "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    logs_json = json.dumps(all_logs, indent=2)
     st.download_button(
-        label="📥 Download 404 Logs as JSON",
+        label="📥 Download All Error Logs",
         data=logs_json,
-        file_name=f"404_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        file_name=f"error_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
         mime="application/json"
     )
     
-    # Display logs in expandable sections
-    for i, log in enumerate(reversed(st.session_state['404_logs'])):
-        with st.expander(f"🚨 404 Error #{len(st.session_state['404_logs']) - i} - {log['timestamp']} - {log['file_source']}", expanded=(i == 0)):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**📄 File Source:**")
-                st.code(log['file_source'])
+    # Display 404 logs
+    if total_404s > 0:
+        st.subheader("🚨 404 Firewall Blocks")
+        for i, log in enumerate(reversed(st.session_state['404_logs'])):
+            with st.expander(f"404 #{total_404s - i} - {log['timestamp']} - {log['file_source']}", expanded=(i == 0)):
+                col1, col2 = st.columns(2)
                 
-                st.write("**🔗 URL Attempted:**")
-                st.code(log['url_attempted'])
+                with col1:
+                    st.write("**📄 File Source:**")
+                    st.code(log['file_source'])
+                    
+                    st.write("**🔗 URL Attempted:**")
+                    st.code(log['url_attempted'])
+                    
+                    st.write("**⏰ Timestamp:**")
+                    st.code(log['timestamp'])
                 
-                st.write("**⏰ Timestamp:**")
-                st.code(log['timestamp'])
+                with col2:
+                    st.write("**📏 Codebase Length:**")
+                    st.code(f"{log['full_codebase_length']} characters")
+                    
+                    st.write("**🤖 System Prompt (truncated):**")
+                    st.code(log['system_prompt'][:100] + "..." if len(log['system_prompt']) > 100 else log['system_prompt'])
                 
-                st.write("**📏 Codebase Length:**")
-                st.code(f"{log['full_codebase_length']} characters")
-            
-            with col2:
-                st.write("**🤖 System Prompt:**")
-                st.text_area("", log['system_prompt'], height=100, disabled=True, key=f"sys_log_{i}")
-                
-                st.write("**👤 User Prompt:**")
-                st.text_area("", log['user_prompt'], height=100, disabled=True, key=f"user_log_{i}")
-            
-            st.write("**📝 Codebase Snippet (first 500 chars):**")
-            st.code(log['codebase_snippet'], language="text")
+                st.write("**📝 Codebase Snippet:**")
+                st.code(log['codebase_snippet'], language="text")
     
-    # Clear logs button
-    if st.button("🗑️ Clear All 404 Logs", type="secondary"):
-        st.session_state['404_logs'] = []
-        st.success("All 404 logs cleared!")
-        st.rerun()
+    # Display other error logs
+    if total_errors > 0:
+        st.subheader("⚠️ All Other Errors")
+        for i, log in enumerate(reversed(st.session_state['error_logs'])):
+            error_color = "🚨" if log['status_code'] and log['status_code'] >= 500 else "⚠️"
+            with st.expander(f"{error_color} {log['error_type']} #{total_errors - i} - {log['timestamp']} - {log['file_source']}", expanded=(i == 0)):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**🏷️ Error Type:**")
+                    st.code(log['error_type'])
+                    
+                    st.write("**📄 File Source:**")
+                    st.code(log['file_source'])
+                    
+                    st.write("**🔗 URL:**")
+                    st.code(log['url_attempted'])
+                    
+                    st.write("**⏰ Timestamp:**")
+                    st.code(log['timestamp'])
+                
+                with col2:
+                    if log['status_code']:
+                        st.write("**📊 Status Code:**")
+                        st.code(log['status_code'])
+                    
+                    st.write("**📏 Payload Size:**")
+                    st.code(f"{log['payload_size']} bytes")
+                    
+                    st.write("**📏 Codebase Length:**")
+                    st.code(f"{log['full_codebase_length']} characters")
+                
+                st.write("**🔍 Response Text:**")
+                st.code(log['response_text'])
+                
+                if log['additional_info']:
+                    st.write("**🔧 Additional Debug Info:**")
+                    st.json(log['additional_info'])
+                
+                with st.expander("Full Context", expanded=False):
+                    st.write("**🤖 System Prompt:**")
+                    st.text_area("", log['system_prompt'], height=100, disabled=True, key=f"sys_err_{i}")
+                    
+                    st.write("**👤 User Prompt:**")
+                    st.text_area("", log['user_prompt'], height=100, disabled=True, key=f"user_err_{i}")
+                    
+                    st.write("**📝 Codebase Snippet:**")
+                    st.code(log['codebase_snippet'], language="text")
+    
+    # Clear logs buttons
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear 404 Logs", type="secondary"):
+            st.session_state['404_logs'] = []
+            st.success("404 logs cleared!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🗑️ Clear All Error Logs", type="secondary"):
+            st.session_state['404_logs'] = []
+            st.session_state['error_logs'] = []
+            st.success("All error logs cleared!")
+            st.rerun()
 
 def main():
     st.set_page_config(
@@ -229,12 +371,20 @@ def main():
     st.title("🖥️ Server Information Extraction")
     st.markdown("**Extract server host and port information with detailed processing flow**")
     
-    # Sidebar for 404 logs
+    # Sidebar for error tracking
     with st.sidebar:
-        st.header("🚨 404 Error Tracking")
-        if len(st.session_state['404_logs']) > 0:
-            st.metric("Total 404 Errors", len(st.session_state['404_logs']))
-        display_404_logs()
+        st.header("🚨 Error Tracking & Debug")
+        total_404s = len(st.session_state['404_logs'])
+        total_errors = len(st.session_state['error_logs'])
+        
+        if total_404s > 0 or total_errors > 0:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("404 Errors", total_404s)
+            with col2:
+                st.metric("Other Errors", total_errors)
+        
+        display_error_logs()
     
     # Main extraction form
     with st.form("server_extraction_form"):
