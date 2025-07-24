@@ -118,13 +118,6 @@ def SQL_DB_Extraction_v2(data, system_prompt):
                         database_information.append(db_table_column_json_data)
     return database_information, sql_queries_information, invalid_sql_queries
 
-
-
-
-
-
-
-
 def Server_LLM_Extraction(data, system_prompt):
     host_ports_array = []
     for result in data['results']:
