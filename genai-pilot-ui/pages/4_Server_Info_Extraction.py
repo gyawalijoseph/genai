@@ -7,7 +7,7 @@ from datetime import datetime
 # Constants (embedded to keep single file)
 SERVER_SYSTEM_PROMPT = "You are an expert at analyzing code for server configurations, host information, and network settings."
 LOCAL_BACKEND_URL = "http://localhost:8000"
-LLM_API_ENDPOINT = "/llm"
+LLM_API_ENDPOINT = "/LLM-API"
 HEADERS = {"Content-Type": "application/json"}
 
 # Initialize session state for 404 logs
@@ -261,12 +261,6 @@ def main():
                 max_value=50,
                 help="Maximum number of files to process from vector search"
             )
-            
-            search_external_files = st.checkbox(
-                "🔗 Search External Files",
-                value=True,
-                help="Include external files in search (adds '-external-files' suffix to codebase)"
-            )
         
         st.markdown("### 🤖 LLM Prompt Configuration")
         
@@ -304,7 +298,7 @@ def main():
                 
                 # Step 1: Vector Search
                 st.subheader("📊 Step 1: Vector Database Search")
-                search_target = codebase + "-external-files" if search_external_files else codebase
+                search_target = codebase + "-external-files"  # Always search external files
                 st.info(f"**Target Database:** `{search_target}`")
                 st.info(f"**Search Query:** `{vector_query}`")
                 st.info(f"**Max Results:** {vector_results_count}")
