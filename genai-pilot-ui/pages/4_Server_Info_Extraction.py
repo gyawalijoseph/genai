@@ -6,7 +6,7 @@ from datetime import datetime
 
 # Constants (embedded to keep single file)
 SERVER_SYSTEM_PROMPT = "You are an expert at analyzing code for server configurations, host information, and network settings."
-LOCAL_BACKEND_URL = "http://localhost:8000"
+LOCAL_BACKEND_URL = "http://localhost:5000"
 LLM_API_ENDPOINT = "/LLM-API"
 HEADERS = {"Content-Type": "application/json"}
 
@@ -714,16 +714,21 @@ def main():
                         st.subheader("📊 Extracted Server Information")
                         st.json(final_output)
 
-                        # Detailed summary
+                        # Generate structured errors for inclusion in results
+                        structured_errors = generate_structured_error_json()
+                        
+                        # Detailed summary with errors included
                         summary = {
                             "extraction_metadata": {
                                 "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                 "codebase": search_target,
                                 "vector_query": vector_query,
                                 "total_files_processed": len(data['results']),
-                                "total_servers_found": len(server_information)
+                                "total_servers_found": len(server_information),
+                                "total_errors": len(st.session_state['404_logs']) + len(st.session_state['error_logs'])
                             },
-                            "results": final_output
+                            "results": final_output,
+                            "errors": structured_errors
                         }
 
                         # Download results
@@ -743,11 +748,37 @@ def main():
                             file_name=f"server_info_clean_{codebase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             mime="application/json"
                         )
+                        
+                        # Download structured errors JSON
+                        if structured_errors["Errors"]:
+                            structured_json = json.dumps(structured_errors, indent=2)
+                            st.download_button(
+                                label="📥 Download All Errors JSON (404s & Failures)",
+                                data=structured_json,
+                                file_name=f"extraction_errors_{codebase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/json",
+                                help="Download all non-200 errors grouped by status code for debugging"
+                            )
 
                         st.balloons()
                     else:
                         st.warning("⚠️ No server information could be extracted from the codebase")
                         st.info("💡 Try adjusting your prompts or search query")
+                        
+                        # Even if no servers found, still offer error download if there are errors
+                        structured_errors = generate_structured_error_json()
+                        if structured_errors["Errors"]:
+                            st.subheader("🚨 Error Analysis")
+                            st.warning(f"Found {len(st.session_state['404_logs']) + len(st.session_state['error_logs'])} errors during processing")
+                            
+                            structured_json = json.dumps(structured_errors, indent=2)
+                            st.download_button(
+                                label="📥 Download All Errors JSON (404s & Failures)",
+                                data=structured_json,
+                                file_name=f"extraction_errors_{codebase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/json",
+                                help="Download all non-200 errors grouped by status code for debugging"
+                            )
 
             except Exception as e:
                 st.error(f"❌ **Extraction failed:** {str(e)}")
