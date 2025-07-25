@@ -120,33 +120,14 @@ def log_404_error(system_prompt, user_prompt, codebase, file_source, url, timest
 
 def log_error(error_type, status_code, response_text, system_prompt, user_prompt, codebase, file_source, url, timestamp,
               additional_info=None):
-    """Log any non-200 response with full debugging metadata"""
-    
-    # Check for Vertex AI firewall violations
-    is_firewall_violation = False
-    incident_assignment = None
-    
-    if response_text and isinstance(response_text, str):
-        firewall_keywords = [
-            "appears to violate company policy",
-            "vertex model request failed",
-            "input was rejected",
-            "firewall",
-            "policy violation",
-            "content filtered"
-        ]
-        
-        response_lower = response_text.lower()
-        if any(keyword in response_lower for keyword in firewall_keywords):
-            is_firewall_violation = True
-            incident_assignment = "AI_FIREWALL_SME"
-            error_type = f"firewall_violation_{error_type}"
+    """Log any non-200 response with complete debugging metadata - fully dynamic"""
     
     log_entry = {
         "timestamp": timestamp,
         "error_type": error_type,
         "status_code": status_code,
-        "response_text": response_text[:1000] + "..." if len(str(response_text)) > 1000 else str(response_text),
+        "response_text": str(response_text),  # Keep full response text for analysis
+        "response_text_truncated": response_text[:1000] + "..." if len(str(response_text)) > 1000 else str(response_text),
         "file_source": file_source,
         "url_attempted": url,
         "system_prompt": system_prompt,
@@ -158,9 +139,8 @@ def log_error(error_type, status_code, response_text, system_prompt, user_prompt
             "user_prompt": user_prompt,
             "codebase": codebase
         })),
-        "is_firewall_violation": is_firewall_violation,
-        "incident_assignment": incident_assignment,
-        "additional_info": additional_info or {}
+        "additional_info": additional_info or {},
+        "error_severity": "HIGH" if status_code and status_code >= 500 else "MEDIUM" if status_code and status_code >= 400 else "LOW"
     }
     st.session_state['error_logs'].append(log_entry)
 
@@ -468,10 +448,14 @@ def generate_structured_error_json():
             "codebase": log['file_source'],
             "error": log['error_type'],
             "timestamp": log['timestamp'],
-            "response_text": log['response_text'][:200] + "..." if len(str(log['response_text'])) > 200 else str(log['response_text']),
+            "status_code": log['status_code'],
+            "error_severity": log.get('error_severity', 'UNKNOWN'),
+            "response_text": log.get('response_text_truncated', log.get('response_text', '')),
+            "full_response_text": log.get('response_text', ''),
             "full_codebase_length": log['full_codebase_length'],
-            "is_firewall_violation": log.get('is_firewall_violation', False),
-            "incident_assignment": log.get('incident_assignment', None)
+            "payload_size": log.get('payload_size', 0),
+            "url_attempted": log.get('url_attempted', ''),
+            "additional_info": log.get('additional_info', {})
         }
         structured_errors["Errors"][status_code].append(error_entry)
     
@@ -487,16 +471,22 @@ def display_error_logs():
         st.info("🎉 No errors logged yet!")
         return
 
-    # Count firewall violations
-    firewall_violations = sum(1 for log in st.session_state['error_logs'] if log.get('is_firewall_violation', False))
+    # Count errors by severity
+    high_severity = sum(1 for log in st.session_state['error_logs'] if log.get('error_severity') == 'HIGH')
+    medium_severity = sum(1 for log in st.session_state['error_logs'] if log.get('error_severity') == 'MEDIUM')
+    low_severity = sum(1 for log in st.session_state['error_logs'] if log.get('error_severity') == 'LOW')
     
     # Summary metrics
     if total_404s > 0:
         st.error(f"🚨 {total_404s} 404 Errors")
+    if high_severity > 0:
+        st.error(f"🔥 {high_severity} High Severity Errors (5xx)")
+    if medium_severity > 0:
+        st.warning(f"⚠️ {medium_severity} Medium Severity Errors (4xx)")
+    if low_severity > 0:
+        st.info(f"ℹ️ {low_severity} Low Severity Errors")
     if total_errors > 0:
-        st.warning(f"⚠️ {total_errors} Other Errors")
-    if firewall_violations > 0:
-        st.error(f"🛡️ {firewall_violations} AI Firewall Violations (Assigned to AI_FIREWALL_SME)")
+        st.info(f"📊 Total Errors: {total_errors}")
 
     # Download structured errors JSON
     structured_errors = generate_structured_error_json()
@@ -556,22 +546,24 @@ def display_error_logs():
     if total_errors > 0:
         st.subheader("⚠️ All Other Errors")
         for i, log in enumerate(reversed(st.session_state['error_logs'])):
-            # Determine error icon and priority
-            if log.get('is_firewall_violation', False):
-                error_color = "🛡️"
-                error_priority = "FIREWALL VIOLATION"
-            elif log['status_code'] and log['status_code'] >= 500:
-                error_color = "🚨"
-                error_priority = "SERVER ERROR"
-            else:
+            # Determine error icon and priority dynamically
+            severity = log.get('error_severity', 'UNKNOWN')
+            if severity == 'HIGH':
+                error_color = "🔥"
+                error_priority = "HIGH SEVERITY"
+            elif severity == 'MEDIUM':
                 error_color = "⚠️"
-                error_priority = "CLIENT ERROR"
+                error_priority = "MEDIUM SEVERITY"
+            elif severity == 'LOW':
+                error_color = "ℹ️"
+                error_priority = "LOW SEVERITY"
+            else:
+                error_color = "❓"
+                error_priority = "UNKNOWN SEVERITY"
                 
-            title = f"{error_color} {log['error_type']} #{total_errors - i} - {log['timestamp']} - {log['file_source']}"
-            if log.get('incident_assignment'):
-                title += f" → {log['incident_assignment']}"
+            title = f"{error_color} [{severity}] {log['error_type']} #{total_errors - i} - {log['timestamp']} - {log['file_source']}"
                 
-            with st.expander(title, expanded=(i == 0 or log.get('is_firewall_violation', False))):
+            with st.expander(title, expanded=(i == 0 or severity == 'HIGH')):
                 col1, col2 = st.columns(2)
 
                 with col1:
@@ -592,22 +584,23 @@ def display_error_logs():
                         st.write("**📊 Status Code:**")
                         st.code(log['status_code'])
 
-                    if log.get('is_firewall_violation', False):
-                        st.write("**🛡️ Firewall Violation:**")
-                        st.error("YES - Company Policy Violation Detected")
-                        
-                        if log.get('incident_assignment'):
-                            st.write("**🎫 Incident Assignment:**")
-                            st.code(log['incident_assignment'])
+                    st.write("**🎯 Error Severity:**")
+                    severity_color = "🔥" if log.get('error_severity') == 'HIGH' else "⚠️" if log.get('error_severity') == 'MEDIUM' else "ℹ️"
+                    st.code(f"{severity_color} {log.get('error_severity', 'UNKNOWN')}")
 
                     st.write("**📏 Payload Size:**")
-                    st.code(f"{log['payload_size']} bytes")
+                    st.code(f"{log.get('payload_size', 0)} bytes")
 
                     st.write("**📏 Codebase Length:**")
                     st.code(f"{log['full_codebase_length']} characters")
 
                 st.write("**🔍 Response Text:**")
-                st.code(log['response_text'])
+                st.code(log.get('response_text_truncated', log.get('response_text', '')))
+                
+                # Show full response if different from truncated
+                if log.get('response_text') and len(log.get('response_text', '')) > 1000:
+                    with st.expander("📄 Full Response Text", expanded=False):
+                        st.code(log.get('response_text', ''), language="text")
 
                 if log['additional_info']:
                     st.write("**🔧 Additional Debug Info:**")
