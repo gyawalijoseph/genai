@@ -202,15 +202,15 @@ def safechain_server_extraction(data, system_prompt, vector_query):
             st.write("**🔍 Step 1: Detecting Server Information**")
             detection_prompt = "Given the provided code snippet, identify if there are server informations present showing host, port and database information? If none, reply back with 'no'. Else extract the server information. Place in a json with keys 'host', 'port', 'database name'. Reply with only the JSON. Make sure it's a valid JSON."
 
-            payload = json.dumps({
+            payload = {
                 "system_prompt": system_prompt,
                 "user_prompt": detection_prompt,
                 "codebase": codebase
-            })
+            }
 
             with st.spinner(f"🔄 Detecting server info in {file_source}..."):
                 try:
-                    response = requests.request("POST", url, headers=HEADERS, data=payload, timeout=300)
+                    response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
 
                     # Handle HTTP errors
                     if response.status_code == 404:
@@ -277,16 +277,15 @@ def safechain_server_extraction(data, system_prompt, vector_query):
                     st.write("**✅ Step 2: Validating Server Information**")
                     validation_prompt = "Is this valid database server information? If yes, reply with 'yes'. If no, reply with 'no'."
 
-                    validation_payload = json.dumps({
+                    validation_payload = {
                         "system_prompt": system_prompt,
                         "user_prompt": validation_prompt,
                         "codebase": json.dumps(json_document)  # Pass the extracted JSON as codebase
-                    })
+                    }
 
                     with st.spinner(f"🔄 Validating server info from {file_source}..."):
                         try:
-                            validation_response = requests.request("POST", url, headers=HEADERS, data=validation_payload,
-                                                                   timeout=300)
+                            validation_response = requests.post(url, json=validation_payload, headers=HEADERS, timeout=300)
 
                             if validation_response.status_code != 200:
                                 st.warning(
