@@ -21,16 +21,16 @@ def vector_search(codebase, similarity_search_query, vector_results_count):
     """
     Actual vector search implementation using embeddings database
     """
-    url = "https://localhost:5000/vector-search"
-    payload = json.dumps({
+    url = "http://localhost:5000/vector-search"
+    payload = {
         "codebase": codebase,
         "query": similarity_search_query,
         "vector_results_count": vector_results_count
-    })
+    }
 
     try:
         with st.spinner(f"🔍 Searching embeddings for '{similarity_search_query}'..."):
-            response = requests.request("POST", url, headers=HEADERS, data=payload, timeout=60)
+            response = requests.post(url, json=payload, headers=HEADERS, timeout=60)
 
         if response.status_code != 200:
             st.error(f"❌ **Vector Search Error:** HTTP {response.status_code}")
@@ -52,7 +52,7 @@ def vector_search(codebase, similarity_search_query, vector_results_count):
         return data
 
     except requests.exceptions.ConnectionError:
-        st.error("❌ **Connection Error:** Could not reach vector search service at https://localhost:5000")
+        st.error("❌ **Connection Error:** Could not reach vector search service at http://localhost:5000")
         st.info("💡 Make sure the vector search service is running")
         return {"results": []}
 
@@ -596,7 +596,7 @@ def main():
                 st.info(f"**🗂️ Target Database:** `{search_target}`")
                 st.info(f"**🔍 Search Query:** `{vector_query}`")
                 st.info(f"**📊 Max Results:** {vector_results_count}")
-                st.info(f"**🌐 Vector Service:** `https://localhost:5000/vector-search`")
+                st.info(f"**🌐 Vector Service:** `http://localhost:5000/vector-search`")
 
                 # Show what we're searching for
                 with st.expander("ℹ️ Vector Search Details", expanded=False):
