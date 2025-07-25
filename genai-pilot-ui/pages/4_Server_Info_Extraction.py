@@ -35,6 +35,12 @@ def vector_search(codebase, similarity_search_query, vector_results_count):
         if response.status_code != 200:
             st.error(f"❌ **Vector Search Error:** HTTP {response.status_code}")
             st.error(f"Response: {response.text}")
+            
+            # Log vector search error
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_error("vector_search_error", response.status_code, response.text, 
+                     "Vector search system", f"Query: {similarity_search_query}", 
+                     f"Codebase: {codebase}", "vector-search-endpoint", url, timestamp)
             return {"results": []}
 
         data = response.json()
@@ -51,22 +57,46 @@ def vector_search(codebase, similarity_search_query, vector_results_count):
         st.success(f"✅ **Found {len(data['results'])} code snippets** from embeddings")
         return data
 
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.ConnectionError as e:
         st.error("❌ **Connection Error:** Could not reach vector search service at http://localhost:5000")
         st.info("💡 Make sure the vector search service is running")
+        
+        # Log connection error
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_error("vector_connection_error", None, str(e), 
+                 "Vector search system", f"Query: {similarity_search_query}", 
+                 f"Codebase: {codebase}", "vector-search-endpoint", url, timestamp)
         return {"results": []}
 
-    except requests.exceptions.Timeout:
+    except requests.exceptions.Timeout as e:
         st.error("❌ **Timeout Error:** Vector search took too long (>60 seconds)")
+        
+        # Log timeout error
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_error("vector_timeout_error", None, f"Timeout after 60 seconds: {str(e)}", 
+                 "Vector search system", f"Query: {similarity_search_query}", 
+                 f"Codebase: {codebase}", "vector-search-endpoint", url, timestamp)
         return {"results": []}
 
     except json.JSONDecodeError as e:
         st.error(f"❌ **JSON Parse Error:** {str(e)}")
         st.error(f"Raw response: {response.text[:500]}...")
+        
+        # Log JSON parse error
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_error("vector_json_parse_error", None, f"JSON decode error: {str(e)}", 
+                 "Vector search system", f"Query: {similarity_search_query}", 
+                 f"Codebase: {codebase}", "vector-search-endpoint", url, timestamp)
         return {"results": []}
 
     except Exception as e:
         st.error(f"❌ **Vector Search Failed:** {str(e)}")
+        
+        # Log general vector search error
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_error("vector_general_error", None, str(e), 
+                 "Vector search system", f"Query: {similarity_search_query}", 
+                 f"Codebase: {codebase}", "vector-search-endpoint", url, timestamp)
         return {"results": []}
 
 
@@ -355,6 +385,46 @@ def safechain_server_extraction(data, system_prompt, vector_query):
     return host_ports_array
 
 
+def generate_structured_error_json():
+    """Generate structured error JSON in the format: {'Errors': {status_code: [error_objects]}}"""
+    structured_errors = {"Errors": {}}
+    
+    # Process 404 errors
+    for log in st.session_state['404_logs']:
+        status_code = "404"
+        if status_code not in structured_errors["Errors"]:
+            structured_errors["Errors"][status_code] = []
+        
+        error_entry = {
+            "system": log['system_prompt'][:100] + "..." if len(log['system_prompt']) > 100 else log['system_prompt'],
+            "user": log['user_prompt'][:100] + "..." if len(log['user_prompt']) > 100 else log['user_prompt'],
+            "codebase": log['file_source'],
+            "error": "404_firewall_block",
+            "timestamp": log['timestamp'],
+            "full_codebase_length": log['full_codebase_length']
+        }
+        structured_errors["Errors"][status_code].append(error_entry)
+    
+    # Process other errors
+    for log in st.session_state['error_logs']:
+        status_code = str(log['status_code']) if log['status_code'] else "unknown"
+        if status_code not in structured_errors["Errors"]:
+            structured_errors["Errors"][status_code] = []
+        
+        error_entry = {
+            "system": log['system_prompt'][:100] + "..." if len(log['system_prompt']) > 100 else log['system_prompt'],
+            "user": log['user_prompt'][:100] + "..." if len(log['user_prompt']) > 100 else log['user_prompt'],
+            "codebase": log['file_source'],
+            "error": log['error_type'],
+            "timestamp": log['timestamp'],
+            "response_text": log['response_text'][:200] + "..." if len(str(log['response_text'])) > 200 else str(log['response_text']),
+            "full_codebase_length": log['full_codebase_length']
+        }
+        structured_errors["Errors"][status_code].append(error_entry)
+    
+    return structured_errors
+
+
 def display_error_logs():
     """Display comprehensive error logs with debugging metadata"""
     total_404s = len(st.session_state['404_logs'])
@@ -370,7 +440,18 @@ def display_error_logs():
     if total_errors > 0:
         st.warning(f"⚠️ {total_errors} Other Errors")
 
-    # Download all logs as JSON
+    # Download structured errors JSON
+    structured_errors = generate_structured_error_json()
+    structured_json = json.dumps(structured_errors, indent=2)
+    st.download_button(
+        label="📥 Download Structured Errors JSON",
+        data=structured_json,
+        file_name=f"structured_errors_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json",
+        help="Download errors grouped by status code in structured format"
+    )
+
+    # Download all logs as JSON (original format)
     all_logs = {
         "404_errors": st.session_state['404_logs'],
         "other_errors": st.session_state['error_logs'],
@@ -378,10 +459,11 @@ def display_error_logs():
     }
     logs_json = json.dumps(all_logs, indent=2)
     st.download_button(
-        label="📥 Download All Error Logs",
+        label="📥 Download All Error Logs (Detailed)",
         data=logs_json,
-        file_name=f"error_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-        mime="application/json"
+        file_name=f"detailed_error_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json",
+        help="Download complete error logs with full debugging metadata"
     )
 
     # Display 404 logs
