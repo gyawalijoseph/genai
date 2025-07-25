@@ -36,9 +36,13 @@ def vector_search(codebase, similarity_search_query, vector_results_count):
             st.error(f"❌ **Vector Search Error:** HTTP {response.status_code}")
             st.error(f"Response: {response.text}")
             
-            # Log vector search error
+            # Log vector search error for ANY non-200 status code
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_error("vector_search_error", response.status_code, response.text, 
+            if response.status_code == 404:
+                log_404_error("Vector search system", f"Query: {similarity_search_query}", 
+                             f"Codebase: {codebase}", "vector-search-endpoint", url, timestamp)
+            
+            log_error(f"vector_search_{response.status_code}", response.status_code, response.text, 
                      "Vector search system", f"Query: {similarity_search_query}", 
                      f"Codebase: {codebase}", "vector-search-endpoint", url, timestamp)
             return {"results": []}
@@ -267,10 +271,16 @@ def safechain_server_extraction(data, system_prompt, vector_query):
 
                     status_code = response_json.get('status_code', response.status_code)
 
-                    if status_code == 400:
-                        st.warning(f"⚠️ **LLM API 400 - Filtered/Blocked:** {response_json.get('output', 'Unknown error')}")
+                    # Handle internal status codes (like 400 from LLM API) dynamically
+                    if status_code != 200:
+                        st.warning(f"⚠️ **LLM API {status_code} - Filtered/Blocked:** {response_json.get('output', 'Unknown error')}")
                         st.info("🔄 **Continuing with next file...**")
-                        log_error("llm_api_400", 400, response_json.get('output', 'Unknown error'),
+                        
+                        # Log internal LLM API errors for ANY non-200 status code
+                        if status_code == 404:
+                            log_404_error(system_prompt, detection_prompt, codebase, file_source, url, timestamp)
+                        
+                        log_error(f"llm_internal_{status_code}", status_code, response_json.get('output', 'Unknown error'),
                                   system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                         continue
 
@@ -320,6 +330,15 @@ def safechain_server_extraction(data, system_prompt, vector_query):
                             if validation_response.status_code != 200:
                                 st.warning(
                                     f"⚠️ **Validation failed with HTTP {validation_response.status_code}** - accepting data anyway")
+                                
+                                # Log validation error for ANY non-200 status code
+                                if validation_response.status_code == 404:
+                                    log_404_error(system_prompt, validation_prompt, json.dumps(json_document), file_source, url, timestamp)
+                                
+                                log_error(f"validation_api_{validation_response.status_code}", validation_response.status_code, 
+                                         validation_response.text, system_prompt, validation_prompt, 
+                                         json.dumps(json_document), file_source, url, timestamp)
+                                
                                 # Accept the data even if validation fails
                                 host_ports_array.append(json_document)
                                 continue
@@ -328,9 +347,18 @@ def safechain_server_extraction(data, system_prompt, vector_query):
                                 validation_json = validation_response.json()
                                 validation_output = validation_json.get('output', '')
 
-                                if validation_json.get('status_code') == 400:
-                                    st.warning(f"⚠️ **Validation API 400 - Filtered/Blocked:** {validation_output}")
+                                internal_status = validation_json.get('status_code', 200)
+                                if internal_status != 200:
+                                    st.warning(f"⚠️ **Validation API {internal_status} - Filtered/Blocked:** {validation_output}")
                                     st.info("📝 **Accepting extracted data anyway since detection was successful**")
+                                    
+                                    # Log internal validation errors for ANY non-200 status code
+                                    if internal_status == 404:
+                                        log_404_error(system_prompt, validation_prompt, json.dumps(json_document), file_source, url, timestamp)
+                                    
+                                    log_error(f"validation_internal_{internal_status}", internal_status, validation_output,
+                                             system_prompt, validation_prompt, json.dumps(json_document), file_source, url, timestamp)
+                                    
                                     host_ports_array.append(json_document)
                                 elif 'yes' in validation_output.lower():
                                     st.success("🎯 **Server information validated successfully!**")
