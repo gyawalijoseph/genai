@@ -408,10 +408,18 @@ def safechain_server_extraction(data, system_prompt, vector_query):
     # Filter out duplicate entries (following LLMUtil pattern)
     if host_ports_array:
         st.info(f"🔄 **Filtering duplicates from {len(host_ports_array)} entries...**")
-        unique_servers = [dict(t) for t in {tuple(d.items()) for d in host_ports_array}]
-        if len(unique_servers) < len(host_ports_array):
-            st.info(f"🧹 **Removed {len(host_ports_array) - len(unique_servers)} duplicate entries**")
-        host_ports_array = unique_servers
+        # Filter out non-dict entries and ensure we only work with valid dictionaries
+        valid_dicts = [d for d in host_ports_array if isinstance(d, dict)]
+        if len(valid_dicts) < len(host_ports_array):
+            st.warning(f"⚠️ **Filtered out {len(host_ports_array) - len(valid_dicts)} invalid entries**")
+        
+        if valid_dicts:
+            unique_servers = [dict(t) for t in {tuple(d.items()) for d in valid_dicts}]
+            if len(unique_servers) < len(valid_dicts):
+                st.info(f"🧹 **Removed {len(valid_dicts) - len(unique_servers)} duplicate entries**")
+            host_ports_array = unique_servers
+        else:
+            host_ports_array = []
 
     return host_ports_array
 
