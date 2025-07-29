@@ -3,8 +3,7 @@ import requests
 import json
 import os
 import re
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Dynamic configuration - can be modified for any codebase
 DEFAULT_DATABASE_SYSTEM_PROMPT = "You are an expert at analyzing code for database configurations, connections, queries, and data models."
@@ -665,24 +664,12 @@ def robust_json_parse(text_output, file_source="unknown"):
     if 'no' in text_output.lower():
         return None, "LLM indicated no database information found"
     
-    # If all else fails, create a fallback structure in the new format
+    # If all else fails, create a simple fallback structure
     fallback_data = {
-        "Table Information": [{
-            file_source: {
-                "PARSING_ERROR": {
-                    "Field Information": [{
-                        "column_name": "RAW_OUTPUT",
-                        "data_type": "text",
-                        "CRUD": "PARSE_ERROR"
-                    }]
-                }
-            }
-        }],
-        "SQL_QUERIES": [],
-        "Invalid_SQL_Queries": [{
-            "source_file": file_source,
-            "query": text_output[:200] + "..." if len(text_output) > 200 else text_output
-        }]
+        "source_file": file_source,
+        "raw_llm_output": text_output[:500] + "..." if len(text_output) > 500 else text_output,
+        "parsing_error": "Could not parse as valid JSON",
+        "extraction_status": "partial"
     }
     
     return fallback_data, "Used fallback structure due to JSON parsing failure"
@@ -825,19 +812,11 @@ def main():
             st.error("❌ System prompt is required")
         else:
             try:
-                # Start timing the entire process
-                start_time = time.time()
-                process_start_time = datetime.now()
-                
                 st.markdown("---")
                 st.header("🔄 Processing Flow")
-                
-                # Display start time
-                st.info(f"⏱️ **Process Started:** {process_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
                 # Step 1: Vector Search
                 st.subheader("📊 Step 1: Vector Database Search")
-                vector_search_start = time.time()
 
                 # Always search both databases
                 search_suffixes = ["-external-files", ""]
@@ -858,10 +837,6 @@ def main():
                     st.write("4. 🎯 Return top matches for LLM processing")
 
                 data = vector_search_multiple(codebase, vector_query, vector_results_count, search_suffixes)
-                
-                # Calculate vector search time
-                vector_search_time = time.time() - vector_search_start
-                st.success(f"✅ **Vector Search Completed** in {vector_search_time:.2f} seconds")
 
                 if not data or 'results' not in data or len(data['results']) == 0:
                     st.warning(f"❌ No content found for query: '{vector_query}' in databases: {', '.join(target_databases)}")
@@ -869,133 +844,26 @@ def main():
                 else:
                     # Step 2: LLM Processing
                     st.subheader("🤖 Step 2: LLM Processing & Database Extraction")
-                    llm_processing_start = time.time()
 
-                    try:
-                        database_information = dynamic_database_extraction(
-                            data, system_prompt, vector_query, extraction_config
-                        )
-                    except Exception as extraction_error:
-                        st.error(f"❌ **Database extraction failed:** {str(extraction_error)}")
-                        st.error("**Error details:** This might be due to complex data structures or unexpected LLM responses")
-                        st.info("💡 **Trying to continue anyway with partial results...**")
-                        database_information = []
-                    
-                    # Calculate LLM processing time
-                    llm_processing_time = time.time() - llm_processing_start
-                    st.success(f"✅ **LLM Processing Completed** in {llm_processing_time:.2f} seconds")
+                    database_information = dynamic_database_extraction(
+                        data, system_prompt, vector_query, extraction_config
+                    )
 
                     # Step 3: Final Results
                     st.header("🎯 Final Results")
-                    final_results_start = time.time()
                     if database_information:
                         try:
-                            db_count = len(database_information) if database_information else 0
+                            db_count = len(database_information) if database_information and hasattr(database_information, '__len__') else 0
                             st.success(
                                 f"✅ **Extraction completed successfully!** Found {db_count} database entries")
                         except (TypeError, AttributeError):
                             st.success("✅ **Extraction completed successfully!** Found database information")
 
-                        # Transform to the exact requested format
-                        def transform_to_new_format(db_info_list):
-                            """Transform database information to the new format structure"""
-                            transformed_output = {
-                                "Table Information": [],
-                                "SQL_QUERIES": [],
-                                "Invalid_SQL_Queries": []
-                            }
-                            
-                            for i, db_entry in enumerate(db_info_list):
-                                if not isinstance(db_entry, dict):
-                                    continue
-                                    
-                                # Create a filename for this entry (use index if no clear source)
-                                source_file = f"extracted_data_{i+1}.unknown"
-                                if 'source_file' in db_entry:
-                                    source_file = db_entry['source_file']
-                                elif len(data.get('results', [])) > i:
-                                    source_file = data['results'][i].get('metadata', {}).get('source', source_file)
-                                
-                                # If it already has the new format, merge it
-                                if "Table Information" in db_entry:
-                                    transformed_output["Table Information"].extend(db_entry.get("Table Information", []))
-                                    transformed_output["SQL_QUERIES"].extend(db_entry.get("SQL_QUERIES", []))
-                                    transformed_output["Invalid_SQL_Queries"].extend(db_entry.get("Invalid_SQL_Queries", []))
-                                else:
-                                    # Transform legacy format to new format
-                                    table_entry = {source_file: {}}
-                                    
-                                    # Look for table-related information
-                                    for key, value in db_entry.items():
-                                        if key.lower() in ['table', 'tables', 'table_name', 'table_names', 'schema']:
-                                            if isinstance(value, str):
-                                                table_entry[source_file][value] = {
-                                                    "Field Information": [{
-                                                        "column_name": "extracted_info",
-                                                        "data_type": "unknown",
-                                                        "CRUD": "UNKNOWN"
-                                                    }]
-                                                }
-                                            elif isinstance(value, list):
-                                                for table_name in value:
-                                                    if isinstance(table_name, str):
-                                                        table_entry[source_file][table_name] = {
-                                                            "Field Information": [{
-                                                                "column_name": "extracted_info",
-                                                                "data_type": "unknown",
-                                                                "CRUD": "UNKNOWN"
-                                                            }]
-                                                        }
-                                    
-                                    # If no specific table info found, create generic entry
-                                    if not table_entry[source_file]:
-                                        table_entry[source_file]["EXTRACTED_DB_INFO"] = {
-                                            "Field Information": [{
-                                                "column_name": str(key),
-                                                "data_type": type(value).__name__,
-                                                "CRUD": "EXTRACTED"
-                                            } for key, value in db_entry.items() if not key.startswith('_')]
-                                        }
-                                    
-                                    transformed_output["Table Information"].append(table_entry)
-                                    
-                                    # Look for SQL queries in the data
-                                    for key, value in db_entry.items():
-                                        if 'sql' in key.lower() or 'query' in key.lower():
-                                            if isinstance(value, str):
-                                                transformed_output["SQL_QUERIES"].append(value)
-                                            elif isinstance(value, list):
-                                                transformed_output["SQL_QUERIES"].extend([str(q) for q in value])
-                            
-                            return transformed_output
-                        
-                        # Apply the transformation
-                        transformed_output = transform_to_new_format(database_information)
-                        
-                        # Format output in the exact requested structure
+                        # Format output in the requested structure
                         final_output = {
-                            "Database Information": transformed_output
+                            "Database Information": database_information
                         }
 
-                        # Calculate final processing time
-                        final_results_time = time.time() - final_results_start
-                        total_time = time.time() - start_time
-                        process_end_time = datetime.now()
-                        
-                        # Display comprehensive timing report
-                        st.subheader("⏱️ **Performance Report**")
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("🔍 Vector Search", f"{vector_search_time:.2f}s")
-                        with col2:
-                            st.metric("🤖 LLM Processing", f"{llm_processing_time:.2f}s")
-                        with col3:
-                            st.metric("🎯 Results Processing", f"{final_results_time:.2f}s")
-                        
-                        st.metric("⏱️ **Total Processing Time**", f"{total_time:.2f} seconds ({total_time/60:.1f} minutes)")
-                        st.info(f"🕰️ **Started:** {process_start_time.strftime('%H:%M:%S')} | **Finished:** {process_end_time.strftime('%H:%M:%S')}")
-                        
                         st.subheader("📊 Extracted Database Information")
                         st.json(final_output)
 
@@ -1007,24 +875,16 @@ def main():
                         if data['results']:
                             databases_searched = list(set(result.get('search_target', 'Unknown') for result in data['results']))
                         
-                        # Detailed summary with comprehensive timing and errors
+                        # Detailed summary with errors included
                         summary = {
                             "extraction_metadata": {
-                                "process_start_time": process_start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                                "process_end_time": process_end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                                "total_processing_time_seconds": round(total_time, 2),
-                                "total_processing_time_minutes": round(total_time/60, 2),
-                                "timing_breakdown": {
-                                    "vector_search_time_seconds": round(vector_search_time, 2),
-                                    "llm_processing_time_seconds": round(llm_processing_time, 2),
-                                    "results_processing_time_seconds": round(final_results_time, 2)
-                                },
+                                "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                 "codebase": codebase,
                                 "databases_searched": databases_searched,
                                 "extraction_type": "standard",
                                 "vector_query": vector_query,
                                 "total_files_processed": len(data['results']),
-                                "total_databases_found": len(database_information) if database_information else 0,
+                                "total_databases_found": len(database_information) if database_information and hasattr(database_information, '__len__') else 0,
                                 "total_errors": len(st.session_state['db_404_logs']) + len(st.session_state['db_error_logs'])
                             },
                             "results": final_output,
@@ -1071,38 +931,7 @@ def main():
 
             except Exception as e:
                 st.error(f"❌ **Extraction failed:** {str(e)}")
-                
-                # Provide specific guidance based on error type
-                error_str = str(e).lower()
-                if "unhashable" in error_str:
-                    st.error("**Error Type:** Data structure contains unhashable elements (lists/dicts)")
-                    st.info("💡 **Solution:** This has been fixed in the latest version. Please try again.")
-                elif "connection" in error_str:
-                    st.error("**Error Type:** Cannot connect to backend service")
-                    st.info("💡 **Solution:** Check if the backend is running on http://localhost:5000")
-                elif "404" in error_str:
-                    st.error("**Error Type:** Database embeddings not found")
-                    st.info("💡 **Solution:** Verify the codebase embeddings exist in the vector database")
-                else:
-                    st.error("**Error Type:** General extraction failure")
-                    st.info("💡 **Solution:** Check backend logs and try with a simpler query")
-                    
-                # Offer error download for debugging
-                st.subheader("📝 Debug Information")
-                error_details = {
-                    "error_message": str(e),
-                    "error_type": type(e).__name__,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "codebase": codebase if 'codebase' in locals() else "unknown",
-                    "vector_query": vector_query if 'vector_query' in locals() else "unknown"
-                }
-                
-                st.download_button(
-                    label="📄 Download Error Details",
-                    data=json.dumps(error_details, indent=2),
-                    file_name=f"extraction_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json"
-                )
+                st.error("Please check if the selected database embeddings exist and the backend is running")
 
 
 if __name__ == "__main__":
