@@ -689,6 +689,110 @@ def robust_json_parse(text_output, file_source="unknown"):
     return fallback_data, "Used fallback structure due to JSON parsing failure"
 
 
+def extract_detailed_database_info(codebase, system_prompt, file_source):
+    """Extract detailed database information including columns, data types, and CRUD operations"""
+    url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Detailed analysis prompt
+    detailed_prompt = """Analyze this code snippet for detailed database information. Extract:
+1. Table names and their columns
+2. Data types for each column (varchar, int, boolean, etc.)
+3. CRUD operations (CREATE, READ, UPDATE, DELETE) for each table
+4. Any SQL queries present
+
+Return ONLY a JSON in this exact format:
+{
+  "tables": {
+    "table_name": {
+      "columns": [
+        {
+          "name": "column_name",
+          "type": "data_type",
+          "crud_operations": ["READ", "WRITE"]
+        }
+      ]
+    }
+  },
+  "sql_queries": ["valid SQL statements"],
+  "invalid_sql": ["malformed SQL statements"]
+}
+
+If no database information found, return: {"tables": {}, "sql_queries": [], "invalid_sql": []}"""
+    
+    payload = {
+        "system_prompt": system_prompt,
+        "user_prompt": detailed_prompt,
+        "codebase": codebase
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
+        
+        if response.status_code != 200:
+            st.warning(f"⚠️ **Detailed analysis failed for {file_source}:** HTTP {response.status_code}")
+            return None
+            
+        response_json = response.json()
+        status_code = response_json.get('status_code', response.status_code)
+        
+        if status_code != 200:
+            st.warning(f"⚠️ **LLM detailed analysis blocked for {file_source}:** {status_code}")
+            return None
+            
+        output = response_json.get('output', '')
+        
+        # Parse the detailed response
+        parsed_data, parse_error = robust_json_parse(output, file_source)
+        
+        if parsed_data and isinstance(parsed_data, dict):
+            return parsed_data
+        else:
+            st.warning(f"⚠️ **Could not parse detailed analysis for {file_source}**")
+            return None
+            
+    except Exception as e:
+        st.warning(f"⚠️ **Detailed analysis error for {file_source}:** {str(e)}")
+        return None
+
+
+def validate_and_categorize_sql(sql_query, file_source):
+    """Validate SQL query and determine if it's valid or invalid"""
+    if not sql_query or not isinstance(sql_query, str):
+        return False, "Empty or invalid query type"
+        
+    query_upper = sql_query.upper().strip()
+    
+    # Basic SQL validation patterns
+    valid_patterns = [
+        # SELECT queries
+        (r'SELECT\s+.+\s+FROM\s+\w+', 'Valid SELECT'),
+        # INSERT queries  
+        (r'INSERT\s+INTO\s+\w+\s*\(.+\)\s*VALUES\s*\(.+\)', 'Valid INSERT'),
+        # UPDATE queries
+        (r'UPDATE\s+\w+\s+SET\s+.+', 'Valid UPDATE'),
+        # DELETE queries
+        (r'DELETE\s+FROM\s+\w+', 'Valid DELETE'),
+        # CREATE TABLE
+        (r'CREATE\s+TABLE\s+\w+\s*\(.+\)', 'Valid CREATE TABLE'),
+        # DROP TABLE
+        (r'DROP\s+TABLE\s+\w+', 'Valid DROP TABLE')
+    ]
+    
+    # Check if query matches valid patterns
+    for pattern, description in valid_patterns:
+        if re.search(pattern, query_upper, re.IGNORECASE | re.DOTALL):
+            return True, description
+            
+    # If it has SQL keywords but doesn't match patterns, it's likely invalid
+    sql_keywords = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER']
+    if any(keyword in query_upper for keyword in sql_keywords):
+        return False, "Malformed SQL syntax"
+        
+    # If it doesn't look like SQL at all
+    return False, "Not a SQL query"
+
+
 def get_extraction_config(extraction_type):
     """Get configuration for different extraction types"""
     configs = {
@@ -913,6 +1017,31 @@ def main():
                             
                             return False
                         
+                        def _add_fallback_table_info(db_entry, source_file, transformed_output):
+                            """Add fallback table information when detailed analysis fails"""
+                            table_entry = {source_file: {}}
+                            found_content = False
+                            
+                            # Look for basic database-related information
+                            db_keywords = ['table', 'column', 'field', 'database', 'schema']
+                            
+                            for key, value in db_entry.items():
+                                key_lower = str(key).lower()
+                                if any(keyword in key_lower for keyword in db_keywords):
+                                    if isinstance(value, str) and value.strip():
+                                        table_entry[source_file]["FALLBACK_TABLE"] = {
+                                            "Field Information": [{
+                                                "column_name": key,
+                                                "data_type": "extracted",
+                                                "CRUD": "UNKNOWN"
+                                            }]
+                                        }
+                                        found_content = True
+                                        break
+                            
+                            if found_content:
+                                transformed_output["Table Information"].append(table_entry)
+                        
                         def transform_to_new_format(db_info_list):
                             """Transform database information to the exact requested format"""
                             transformed_output = {
@@ -945,87 +1074,75 @@ def main():
                                     transformed_output["SQL_QUERIES"].extend(db_entry.get("SQL_QUERIES", []))
                                     transformed_output["Invalid_SQL_Queries"].extend(db_entry.get("Invalid_SQL_Queries", []))
                                 else:
-                                    # Transform legacy format to new format
-                                    table_entry = {source_file: {}}
+                                    # Get the original codebase for detailed analysis
+                                    original_codebase = ""
+                                    if len(data.get('results', [])) > i:
+                                        original_codebase = data['results'][i].get('page_content', '')
                                     
-                                    # Look for table-related information with expanded database keywords
-                                    found_tables = False  
-                                    db_table_keywords = ['table', 'tables', 'table_name', 'table_names', 'schema', 'entity', 'collection', 'model']
-                                    
-                                    for key, value in db_entry.items():
-                                        if key.lower() in db_table_keywords or any(keyword in key.lower() for keyword in db_table_keywords):
-                                            found_tables = True
-                                            if isinstance(value, str):
-                                                table_entry[source_file][value] = {
-                                                    "Field Information": [{
-                                                        "column_name": "extracted_info",
-                                                        "data_type": "unknown",
-                                                        "CRUD": "UNKNOWN"
-                                                    }]
-                                                }
-                                            elif isinstance(value, list):
-                                                for table_name in value:
-                                                    if isinstance(table_name, str):
+                                    # Use LLM to extract detailed database information
+                                    if original_codebase:
+                                        st.write(f"⚙️ **Performing detailed analysis for {source_file}...**")
+                                        detailed_info = extract_detailed_database_info(original_codebase, system_prompt, source_file)
+                                        
+                                        if detailed_info and isinstance(detailed_info, dict):
+                                            # Process detailed table information
+                                            tables_data = detailed_info.get('tables', {})
+                                            if tables_data:
+                                                table_entry = {source_file: {}}
+                                                
+                                                for table_name, table_info in tables_data.items():
+                                                    columns_data = table_info.get('columns', [])
+                                                    field_information = []
+                                                    
+                                                    for column in columns_data:
+                                                        if isinstance(column, dict):
+                                                            field_info = {
+                                                                "column_name": column.get('name', 'unknown'),
+                                                                "data_type": column.get('type', 'unknown'),
+                                                                "CRUD": ", ".join(column.get('crud_operations', ['UNKNOWN']))
+                                                            }
+                                                            field_information.append(field_info)
+                                                    
+                                                    if field_information:
                                                         table_entry[source_file][table_name] = {
-                                                            "Field Information": [{
-                                                                "column_name": "extracted_info",
-                                                                "data_type": "unknown",
-                                                                "CRUD": "UNKNOWN"
-                                                            }]
+                                                            "Field Information": field_information
                                                         }
-                                    
-                                    # If no specific table info found, create generic entry with all extracted data
-                                    if not found_tables:
-                                        table_entry[source_file]["EXTRACTED_DB_INFO"] = {
-                                            "Field Information": []
-                                        }
-                                        
-                                        # Convert each key-value pair to field information, but only database-related ones
-                                        db_related_fields = ['host', 'port', 'database', 'username', 'password', 'connection_string', 'datasource', 'schema', 'driver', 'url']
-                                        
-                                        for key, value in db_entry.items():
-                                            key_lower = str(key).lower()
-                                            if (
-                                                not key.startswith('_') and 
-                                                key not in ['source_file', 'raw_llm_output', 'parsing_error'] and
-                                                (key_lower in db_related_fields or any(db_field in key_lower for db_field in db_related_fields))
-                                            ):
-                                                field_info = {
-                                                    "column_name": str(key),
-                                                    "data_type": type(value).__name__,
-                                                    "CRUD": "EXTRACTED"
-                                                }
-                                                # If value contains useful info, add it
-                                                if isinstance(value, str) and len(value) < 100:
-                                                    field_info["value"] = value
-                                                table_entry[source_file]["EXTRACTED_DB_INFO"]["Field Information"].append(field_info)
-                                    
-                                    # Only add if there's actual database content
-                                    if table_entry[source_file] and (found_tables or table_entry[source_file]["EXTRACTED_DB_INFO"]["Field Information"]):
-                                        transformed_output["Table Information"].append(table_entry)
-                                    
-                                    # Look for SQL queries in the data
-                                    for key, value in db_entry.items():
-                                        if 'sql' in key.lower() or 'query' in key.lower():
-                                            if isinstance(value, str) and value.strip():
-                                                # Check if it looks like a valid SQL query
-                                                if any(sql_keyword in value.upper() for sql_keyword in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP']):
-                                                    transformed_output["SQL_QUERIES"].append(value)
-                                                else:
+                                                
+                                                if table_entry[source_file]:
+                                                    transformed_output["Table Information"].append(table_entry)
+                                            
+                                            # Process SQL queries with validation
+                                            sql_queries = detailed_info.get('sql_queries', [])
+                                            for query in sql_queries:
+                                                if isinstance(query, str) and query.strip():
+                                                    is_valid, reason = validate_and_categorize_sql(query, source_file)
+                                                    if is_valid:
+                                                        transformed_output["SQL_QUERIES"].append(query.strip())
+                                                    else:
+                                                        transformed_output["Invalid_SQL_Queries"].append({
+                                                            "source_file": source_file,
+                                                            "query": query.strip(),
+                                                            "reason": reason
+                                                        })
+                                            
+                                            # Process invalid SQL queries
+                                            invalid_sql = detailed_info.get('invalid_sql', [])
+                                            for query in invalid_sql:
+                                                if isinstance(query, str) and query.strip():
                                                     transformed_output["Invalid_SQL_Queries"].append({
                                                         "source_file": source_file,
-                                                        "query": value
+                                                        "query": query.strip(),
+                                                        "reason": "Identified as invalid by LLM"
                                                     })
-                                            elif isinstance(value, list):
-                                                for query in value:
-                                                    if isinstance(query, str) and query.strip():
-                                                        if any(sql_keyword in query.upper() for sql_keyword in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP']):
-                                                            transformed_output["SQL_QUERIES"].append(query)
-                                                        else:
-                                                            transformed_output["Invalid_SQL_Queries"].append({
-                                                                "source_file": source_file,
-                                                                "query": query
-                                                            })
+                                        else:
+                                            st.warning(f"⚠️ **Could not extract detailed info from {source_file}, using fallback**")
+                                            # Fallback to basic extraction
+                                            _add_fallback_table_info(db_entry, source_file, transformed_output)
+                                    else:
+                                        # Fallback if no original codebase available
+                                        _add_fallback_table_info(db_entry, source_file, transformed_output)
+                                    
+                                    # SQL query processing is now handled in the detailed analysis above
                             
                             return transformed_output
                         
