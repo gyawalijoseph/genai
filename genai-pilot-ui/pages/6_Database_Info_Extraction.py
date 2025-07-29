@@ -646,19 +646,12 @@ def robust_json_parse(text_output, file_source="unknown"):
     if 'no' in text_output.lower():
         return None, "LLM indicated no database information found"
     
-    # If all else fails, create a fallback structure
+    # If all else fails, create a simple fallback structure
     fallback_data = {
-        "Table Information": [{
-            "source_file": file_source,
-            "PARSING_ERROR": {
-                "Field Information": [{
-                    "column_name": "RAW_OUTPUT",
-                    "data_type": "text",
-                    "CRUD_operations": "PARSE_ERROR",
-                    "raw_content": text_output[:200] + "..." if len(text_output) > 200 else text_output
-                }]
-            }
-        }]
+        "source_file": file_source,
+        "raw_llm_output": text_output[:500] + "..." if len(text_output) > 500 else text_output,
+        "parsing_error": "Could not parse as valid JSON",
+        "extraction_status": "partial"
     }
     
     return fallback_data, "Used fallback structure due to JSON parsing failure"
@@ -668,35 +661,8 @@ def get_extraction_config(extraction_type):
     """Get configuration for different extraction types"""
     configs = {
         "standard": {
-            "detection_prompt": """Analyze the provided code snippet for database-related information including table schemas, field definitions, SQL queries, and database configurations.
-
-If no database information is found, reply with exactly: no
-
-If database information is found, extract it in this EXACT JSON format:
-{
-  "Table Information": [
-    {
-      "source_file": "filename.extension",
-      "TABLE_NAME": {
-        "Field Information": [
-          {
-            "column_name": "FIELD_NAME",
-            "data_type": "data_type",
-            "CRUD_operations": "operations_found"
-          }
-        ]
-      }
-    }
-  ]
-}
-
-IMPORTANT: 
-- Reply with ONLY the JSON, no other text
-- Ensure the JSON is valid and properly formatted
-- Use actual table names and field names found in the code
-- If multiple tables found, include them all in the array
-- Include CRUD operations if found (I=Insert, U=Update, D=Delete, S=Select)""",
-            "validation_prompt": "Is this valid database table and field information in the correct JSON format? Reply with 'yes' if valid, 'no' if invalid.",
+            "detection_prompt": "Given the provided code snippet, identify if there are database-related configurations, connections, or queries present? If none, reply back with 'no'. Else extract the database information. Place in a json with keys for database name, connection string, host, port, username, schema, table names, or any other database-related information found. Reply with only the JSON. Make sure it's a valid JSON.",
+            "validation_prompt": "Is this valid database-related information? If yes, reply with 'yes'. If no, reply with 'no'.",
             "text_cleanup_rules": [
                 {"find": "@aexp", "replace": "@aexps"},
                 {"find": "@", "replace": ""},
@@ -871,22 +837,9 @@ def main():
                         st.success(
                             f"✅ **Extraction completed successfully!** Found {len(database_information)} database entries")
 
-                        # Combine and format all table information
-                        combined_table_info = []
-                        
-                        for db_entry in database_information:
-                            if isinstance(db_entry, dict) and "Table Information" in db_entry:
-                                # If it's already in the correct format, extend the list
-                                combined_table_info.extend(db_entry["Table Information"])
-                            elif isinstance(db_entry, dict):
-                                # If it's a raw database entry, wrap it in the expected format
-                                combined_table_info.append(db_entry)
-                        
-                        # Format output in the exact requested structure
+                        # Format output in the requested structure
                         final_output = {
-                            "Database Information": {
-                                "Table Information": combined_table_info
-                            }
+                            "Database Information": database_information
                         }
 
                         st.subheader("📊 Extracted Database Information")
