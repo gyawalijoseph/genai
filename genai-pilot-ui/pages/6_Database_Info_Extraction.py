@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import json
 import os
+import re
 from datetime import datetime
 
 # Dynamic configuration - can be modified for any codebase
@@ -367,18 +368,28 @@ def dynamic_database_extraction(data, system_prompt, vector_query, extraction_co
                         except Exception as e:
                             st.write(f"Raw Output: {output}")
 
-                    # Try to parse the JSON extraction
-                    try:
-                        json_document = json.loads(output)
-                        st.success("✅ **Database information detected!**")
-                        try:
-                            st.json(json_document)
-                        except Exception as e:
-                            st.write("Detected JSON:")
-                            st.code(json.dumps(json_document, indent=2), language="json")
-                    except json.JSONDecodeError:
-                        st.error(f"❌ **Invalid JSON from LLM:** {output}")
+                    # Use robust JSON parsing
+                    json_document, parse_error = robust_json_parse(output, file_source)
+                    
+                    if json_document is None:
+                        if "no database information found" in parse_error:
+                            st.warning("⚠️ **No database information found in this file**")
+                        else:
+                            st.error(f"❌ **JSON Parsing Failed:** {parse_error}")
+                            st.error(f"**Raw LLM Output:** {output[:200]}...")
                         continue
+                    
+                    if parse_error:
+                        st.warning(f"⚠️ **JSON Parsing Warning:** {parse_error}")
+                        st.success("✅ **Database information detected (with parsing assistance)!**")
+                    else:
+                        st.success("✅ **Database information detected!**")
+                    
+                    try:
+                        st.json(json_document)
+                    except Exception as e:
+                        st.write("Detected JSON:")
+                        st.code(json.dumps(json_document, indent=2), language="json")
 
                     # Step 2: Validation with configurable prompt
                     st.write("**✅ Step 2: Validating Database Information**")
@@ -584,12 +595,108 @@ def display_error_logs():
             st.rerun()
 
 
+def robust_json_parse(text_output, file_source="unknown"):
+    """Robust JSON parsing with multiple fallback strategies"""
+    if not text_output or not text_output.strip():
+        return None, "Empty output from LLM"
+    
+    # Strategy 1: Direct JSON parsing
+    try:
+        return json.loads(text_output), None
+    except json.JSONDecodeError:
+        pass
+    
+    # Strategy 2: Extract JSON from markdown code blocks
+    json_match = re.search(r'```(?:json)?\s*([^`]+)\s*```', text_output, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(1).strip()), None
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 3: Extract JSON-like content between { and }
+    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text_output, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(0)), None
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 4: Try to fix common JSON issues
+    cleaned_text = text_output.strip()
+    
+    # Remove common prefixes/suffixes
+    prefixes_to_remove = ['Here is the JSON:', 'JSON:', 'Result:', 'Output:']
+    for prefix in prefixes_to_remove:
+        if cleaned_text.startswith(prefix):
+            cleaned_text = cleaned_text[len(prefix):].strip()
+    
+    # Try to extract anything that looks like JSON
+    if '{' in cleaned_text and '}' in cleaned_text:
+        start_idx = cleaned_text.find('{')
+        end_idx = cleaned_text.rfind('}') + 1
+        potential_json = cleaned_text[start_idx:end_idx]
+        
+        try:
+            return json.loads(potential_json), None
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 5: Create structured fallback
+    if 'no' in text_output.lower():
+        return None, "LLM indicated no database information found"
+    
+    # If all else fails, create a fallback structure
+    fallback_data = {
+        "Table Information": [{
+            "source_file": file_source,
+            "PARSING_ERROR": {
+                "Field Information": [{
+                    "column_name": "RAW_OUTPUT",
+                    "data_type": "text",
+                    "CRUD_operations": "PARSE_ERROR",
+                    "raw_content": text_output[:200] + "..." if len(text_output) > 200 else text_output
+                }]
+            }
+        }]
+    }
+    
+    return fallback_data, "Used fallback structure due to JSON parsing failure"
+
+
 def get_extraction_config(extraction_type):
     """Get configuration for different extraction types"""
     configs = {
         "standard": {
-            "detection_prompt": "Given the provided code snippet, identify if there are database-related configurations, connections, or queries present? If none, reply back with 'no'. Else extract the database information. Place in a json with keys for database name, connection string, host, port, username, schema, table names, or any other database-related information found. Reply with only the JSON. Make sure it's a valid JSON.",
-            "validation_prompt": "Is this valid database-related information? If yes, reply with 'yes'. If no, reply with 'no'.",
+            "detection_prompt": """Analyze the provided code snippet for database-related information including table schemas, field definitions, SQL queries, and database configurations.
+
+If no database information is found, reply with exactly: no
+
+If database information is found, extract it in this EXACT JSON format:
+{
+  "Table Information": [
+    {
+      "source_file": "filename.extension",
+      "TABLE_NAME": {
+        "Field Information": [
+          {
+            "column_name": "FIELD_NAME",
+            "data_type": "data_type",
+            "CRUD_operations": "operations_found"
+          }
+        ]
+      }
+    }
+  ]
+}
+
+IMPORTANT: 
+- Reply with ONLY the JSON, no other text
+- Ensure the JSON is valid and properly formatted
+- Use actual table names and field names found in the code
+- If multiple tables found, include them all in the array
+- Include CRUD operations if found (I=Insert, U=Update, D=Delete, S=Select)""",
+            "validation_prompt": "Is this valid database table and field information in the correct JSON format? Reply with 'yes' if valid, 'no' if invalid.",
             "text_cleanup_rules": [
                 {"find": "@aexp", "replace": "@aexps"},
                 {"find": "@", "replace": ""},
@@ -764,9 +871,22 @@ def main():
                         st.success(
                             f"✅ **Extraction completed successfully!** Found {len(database_information)} database entries")
 
-                        # Format output in the requested structure
+                        # Combine and format all table information
+                        combined_table_info = []
+                        
+                        for db_entry in database_information:
+                            if isinstance(db_entry, dict) and "Table Information" in db_entry:
+                                # If it's already in the correct format, extend the list
+                                combined_table_info.extend(db_entry["Table Information"])
+                            elif isinstance(db_entry, dict):
+                                # If it's a raw database entry, wrap it in the expected format
+                                combined_table_info.append(db_entry)
+                        
+                        # Format output in the exact requested structure
                         final_output = {
-                            "Database Information": database_information
+                            "Database Information": {
+                                "Table Information": combined_table_info
+                            }
                         }
 
                         st.subheader("📊 Extracted Database Information")
