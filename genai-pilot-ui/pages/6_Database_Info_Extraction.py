@@ -18,9 +18,9 @@ if 'db_error_logs' not in st.session_state:
     st.session_state['db_error_logs'] = []
 
 
-def vector_search(codebase, similarity_search_query, vector_results_count, search_suffix="-external-files"):
+def vector_search_single(codebase, similarity_search_query, vector_results_count, search_suffix):
     """
-    Dynamic vector search implementation that can work with any codebase
+    Single vector search implementation for one database
     """
     search_target = f"{codebase}{search_suffix}"
     url = "http://localhost:5000/vector-search"
@@ -35,8 +35,7 @@ def vector_search(codebase, similarity_search_query, vector_results_count, searc
             response = requests.post(url, json=payload, headers=HEADERS, timeout=60)
 
         if response.status_code != 200:
-            st.error(f"❌ **Vector Search Error:** HTTP {response.status_code}")
-            st.error(f"Response: {response.text}")
+            st.warning(f"⚠️ **Search Warning for {search_target}:** HTTP {response.status_code}")
             
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if response.status_code == 404:
@@ -46,20 +45,24 @@ def vector_search(codebase, similarity_search_query, vector_results_count, searc
             log_error(f"vector_search_{response.status_code}", response.status_code, response.text, 
                      "Vector search system", f"Query: {similarity_search_query}", 
                      f"Codebase: {search_target}", "vector-search-endpoint", url, timestamp)
-            return {"results": []}
+            return {"results": [], "search_target": search_target, "success": False}
 
         data = response.json()
 
         if not isinstance(data, dict) or 'results' not in data:
-            st.error("❌ **Invalid response format from vector search**")
-            return {"results": []}
+            st.warning(f"⚠️ **Invalid response format from {search_target}**")
+            return {"results": [], "search_target": search_target, "success": False}
 
         if not data['results']:
-            st.warning("⚠️ **No results found** - check if embeddings exist for this codebase")
-            return {"results": []}
+            st.info(f"ℹ️ **No results found in {search_target}**")
+            return {"results": [], "search_target": search_target, "success": True}
 
-        st.success(f"✅ **Found {len(data['results'])} code snippets** from embeddings")
-        return data
+        # Add search target info to each result
+        for result in data['results']:
+            result['search_target'] = search_target
+            
+        st.success(f"✅ **Found {len(data['results'])} code snippets** from {search_target}")
+        return {"results": data['results'], "search_target": search_target, "success": True}
 
     except requests.exceptions.ConnectionError as e:
         st.error("❌ **Connection Error:** Could not reach vector search service at http://localhost:5000")
@@ -69,35 +72,85 @@ def vector_search(codebase, similarity_search_query, vector_results_count, searc
         log_error("vector_connection_error", None, str(e), 
                  "Vector search system", f"Query: {similarity_search_query}", 
                  f"Codebase: {search_target}", "vector-search-endpoint", url, timestamp)
-        return {"results": []}
+        return {"results": [], "search_target": search_target, "success": False}
 
     except requests.exceptions.Timeout as e:
-        st.error("❌ **Timeout Error:** Vector search took too long (>60 seconds)")
+        st.warning(f"⏰ **Timeout for {search_target}:** Search took too long (>60 seconds)")
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_error("vector_timeout_error", None, f"Timeout after 60 seconds: {str(e)}", 
                  "Vector search system", f"Query: {similarity_search_query}", 
                  f"Codebase: {search_target}", "vector-search-endpoint", url, timestamp)
-        return {"results": []}
+        return {"results": [], "search_target": search_target, "success": False}
 
     except json.JSONDecodeError as e:
-        st.error(f"❌ **JSON Parse Error:** {str(e)}")
-        st.error(f"Raw response: {response.text[:500]}...")
+        st.warning(f"⚠️ **JSON Parse Error for {search_target}:** {str(e)}")
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_error("vector_json_parse_error", None, f"JSON decode error: {str(e)}", 
                  "Vector search system", f"Query: {similarity_search_query}", 
                  f"Codebase: {search_target}", "vector-search-endpoint", url, timestamp)
-        return {"results": []}
+        return {"results": [], "search_target": search_target, "success": False}
 
     except Exception as e:
-        st.error(f"❌ **Vector Search Failed:** {str(e)}")
+        st.warning(f"⚠️ **Search Failed for {search_target}:** {str(e)}")
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_error("vector_general_error", None, str(e), 
                  "Vector search system", f"Query: {similarity_search_query}", 
                  f"Codebase: {search_target}", "vector-search-endpoint", url, timestamp)
+        return {"results": [], "search_target": search_target, "success": False}
+
+
+def vector_search_multiple(codebase, similarity_search_query, vector_results_count, search_suffixes=["-external-files", ""]):
+    """
+    Multiple vector search implementation that searches both external files and actual codebase
+    """
+    st.subheader("🔍 Multi-Database Vector Search")
+    
+    all_results = []
+    search_summary = []
+    
+    for suffix in search_suffixes:
+        search_name = f"{codebase}{suffix}" if suffix else codebase
+        st.write(f"**🗂️ Searching Database:** `{search_name}`")
+        
+        result = vector_search_single(codebase, similarity_search_query, vector_results_count, suffix)
+        
+        search_summary.append({
+            "database": search_name,
+            "results_count": len(result['results']),
+            "success": result['success']
+        })
+        
+        if result['results']:
+            all_results.extend(result['results'])
+    
+    # Display search summary
+    st.write("**📊 Search Summary:**")
+    total_results = 0
+    successful_searches = 0
+    
+    for summary in search_summary:
+        status_icon = "✅" if summary['success'] else "❌"
+        st.write(f"• {status_icon} `{summary['database']}`: {summary['results_count']} results")
+        total_results += summary['results_count']
+        if summary['success']:
+            successful_searches += 1
+    
+    st.info(f"**🎯 Total Results:** {total_results} from {successful_searches}/{len(search_suffixes)} databases")
+    
+    if not all_results:
+        st.warning("⚠️ **No results found across all databases** - check if embeddings exist")
         return {"results": []}
+    
+    # Sort results by similarity score if available
+    try:
+        all_results.sort(key=lambda x: float(x.get('metadata', {}).get('score', 0)), reverse=True)
+    except:
+        pass  # If sorting fails, keep original order
+    
+    return {"results": all_results}
 
 
 def log_404_error(system_prompt, user_prompt, codebase, file_source, url, timestamp):
@@ -149,21 +202,41 @@ def dynamic_database_extraction(data, system_prompt, vector_query, extraction_co
     st.info(f"**Vector Search Query Used:** `{vector_query}`")
     st.info(f"**Files Found:** {len(data['results'])}")
 
-    # Display summary of retrieved files
+    # Display summary of retrieved files grouped by database
     if data['results']:
-        st.write("**📁 Retrieved Files:**")
+        st.write("**📁 Retrieved Files by Database:**")
+        database_summary = {}
         file_summary = {}
+        
         for result in data['results']:
             file_path = result['metadata']['source']
+            search_target = result.get('search_target', 'Unknown Database')
             content_length = len(result['page_content'])
+            
+            # Track by database
+            if search_target not in database_summary:
+                database_summary[search_target] = {'count': 0, 'total_chars': 0, 'files': set()}
+            database_summary[search_target]['count'] += 1
+            database_summary[search_target]['total_chars'] += content_length
+            database_summary[search_target]['files'].add(file_path)
+            
+            # Track by file
             if file_path in file_summary:
                 file_summary[file_path]['count'] += 1
                 file_summary[file_path]['total_chars'] += content_length
+                file_summary[file_path]['databases'].add(search_target)
             else:
-                file_summary[file_path] = {'count': 1, 'total_chars': content_length}
+                file_summary[file_path] = {'count': 1, 'total_chars': content_length, 'databases': {search_target}}
 
+        # Display database-level summary
+        for database, info in database_summary.items():
+            st.write(f"**🗄️ {database}:** {info['count']} snippets from {len(info['files'])} files ({info['total_chars']} chars)")
+            
+        # Display file-level summary
+        st.write("**📄 File Details:**")
         for file_path, info in file_summary.items():
-            st.write(f"• `{file_path}` - {info['count']} snippet(s), {info['total_chars']} characters total")
+            databases_list = ", ".join(info['databases'])
+            st.write(f"• `{file_path}` - {info['count']} snippet(s), {info['total_chars']} characters (from: {databases_list})")
 
         # Show similarity scores if available
         if 'score' in data['results'][0].get('metadata', {}):
@@ -182,8 +255,10 @@ def dynamic_database_extraction(data, system_prompt, vector_query, extraction_co
                 score = float(result['metadata']['score'])
                 similarity_info = f" (Similarity: {score:.3f})"
 
+            search_target = result.get('search_target', 'Unknown Database')
             st.markdown(
                 f"### 📄 Processing Snippet {i}/{len(data['results'])}: `{result['metadata']['source']}`{similarity_info}")
+            st.write(f"**🗄️ Source Database:** `{search_target}`")
 
             codebase = result['page_content']
             file_source = result['metadata']['source']
@@ -659,9 +734,22 @@ def main():
                 # Step 1: Vector Search
                 st.subheader("📊 Step 1: Vector Database Search")
 
-                st.info(f"**🗂️ Target Database:** `{codebase}{search_suffix}`")
+                # Determine which databases to search
+                search_suffixes = []
+                if include_external:
+                    search_suffixes.append("-external-files")
+                if include_codebase:
+                    search_suffixes.append("")
+                
+                if not search_suffixes:
+                    st.error("❌ Please select at least one database to search")
+                    st.stop()
+                
+                target_databases = [f"{codebase}{suffix}" if suffix else codebase for suffix in search_suffixes]
+                
+                st.info(f"**🗂️ Target Databases:** `{', '.join(target_databases)}`")
                 st.info(f"**🔍 Search Query:** `{vector_query}`")
-                st.info(f"**📊 Max Results:** {vector_results_count}")
+                st.info(f"**📊 Max Results per Database:** {vector_results_count}")
                 st.info(f"**🎯 Extraction Type:** `{extraction_type}`")
                 st.info(f"**🌐 Vector Service:** `http://localhost:5000/vector-search`")
 
@@ -672,10 +760,10 @@ def main():
                     st.write("3. 📊 Rank results by similarity score")
                     st.write("4. 🎯 Return top matches for LLM processing")
 
-                data = vector_search(codebase, vector_query, vector_results_count, search_suffix)
+                data = vector_search_multiple(codebase, vector_query, vector_results_count, search_suffixes)
 
                 if not data or 'results' not in data or len(data['results']) == 0:
-                    st.warning(f"❌ No content found for query: '{vector_query}' in database: '{codebase}{search_suffix}'")
+                    st.warning(f"❌ No content found for query: '{vector_query}' in databases: {', '.join(target_databases)}")
                     st.info("💡 Try adjusting your search query or check if the codebase embeddings exist")
                 else:
                     # Step 2: LLM Processing
@@ -702,11 +790,17 @@ def main():
                         # Generate structured errors for inclusion in results
                         structured_errors = generate_structured_error_json()
                         
+                        # Count databases searched
+                        databases_searched = []
+                        if data['results']:
+                            databases_searched = list(set(result.get('search_target', 'Unknown') for result in data['results']))
+                        
                         # Detailed summary with errors included
                         summary = {
                             "extraction_metadata": {
                                 "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                "codebase": f"{codebase}{search_suffix}",
+                                "codebase": codebase,
+                                "databases_searched": databases_searched,
                                 "extraction_type": extraction_type,
                                 "vector_query": vector_query,
                                 "total_files_processed": len(data['results']),
@@ -737,8 +831,8 @@ def main():
 
                         st.balloons()
                     else:
-                        st.warning("⚠️ No database information could be extracted from the codebase")
-                        st.info("💡 Try adjusting your prompts, search query, or extraction type")
+                        st.warning("⚠️ No database information could be extracted from the selected databases")
+                        st.info("💡 Try adjusting your prompts, search query, extraction type, or database selection")
                         
                         # Even if no databases found, still offer error download if there are errors
                         structured_errors = generate_structured_error_json()
@@ -757,7 +851,7 @@ def main():
 
             except Exception as e:
                 st.error(f"❌ **Extraction failed:** {str(e)}")
-                st.error("Please check if the codebase embeddings exist and the backend is running")
+                st.error("Please check if the selected database embeddings exist and the backend is running")
 
 
 if __name__ == "__main__":
