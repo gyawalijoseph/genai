@@ -654,11 +654,8 @@ def main():
                 help="Name of the codebase to search for database information"
             )
 
-            extraction_type = st.selectbox(
-                "🎯 Extraction Type:",
-                ["standard", "sql_focused", "config_focused"],
-                help="Choose the type of database extraction to perform"
-            )
+            # Fixed to standard extraction type only
+            extraction_type = "standard"
 
             vector_query = st.text_input(
                 "🔍 Vector Search Query:",
@@ -675,22 +672,12 @@ def main():
                 help="Maximum number of files to process from each vector database"
             )
             
-            include_external = st.checkbox(
-                "🔍 Include External Files",
-                value=True,
-                help="Search in {codebase}-external-files database"
-            )
-            
-            include_codebase = st.checkbox(
-                "💻 Include Main Codebase",
-                value=True,
-                help="Search in main {codebase} database"
-            )
+            st.info("🗄️ **Automatic Multi-Database Search:** Will search both main codebase and external files")
 
         st.markdown("### 🤖 LLM Prompt Configuration")
 
-        # Get extraction configuration
-        extraction_config = get_extraction_config(extraction_type)
+        # Use standard extraction configuration
+        extraction_config = get_extraction_config("standard")
 
         system_prompt = st.text_area(
             "🤖 System Prompt:",
@@ -699,8 +686,8 @@ def main():
             help="Instructions for the AI about its role and context"
         )
 
-        # Show extraction type details
-        with st.expander(f"🔍 View {extraction_type.title()} Extraction Configuration", expanded=False):
+        # Show extraction configuration details
+        with st.expander("🔍 View Standard Extraction Configuration", expanded=False):
             st.text_area(
                 "Detection Prompt:",
                 extraction_config['detection_prompt'],
@@ -740,23 +727,15 @@ def main():
                 # Step 1: Vector Search
                 st.subheader("📊 Step 1: Vector Database Search")
 
-                # Determine which databases to search
-                search_suffixes = []
-                if include_external:
-                    search_suffixes.append("-external-files")
-                if include_codebase:
-                    search_suffixes.append("")
-                
-                if not search_suffixes:
-                    st.error("❌ Please select at least one database to search")
-                    st.stop()
+                # Always search both databases
+                search_suffixes = ["-external-files", ""]
                 
                 target_databases = [f"{codebase}{suffix}" if suffix else codebase for suffix in search_suffixes]
                 
                 st.info(f"**🗂️ Target Databases:** `{', '.join(target_databases)}`")
                 st.info(f"**🔍 Search Query:** `{vector_query}`")
                 st.info(f"**📊 Max Results per Database:** {vector_results_count}")
-                st.info(f"**🎯 Extraction Type:** `{extraction_type}`")
+                st.info(f"**🎯 Extraction Type:** `standard`")
                 st.info(f"**🌐 Vector Service:** `http://localhost:5000/vector-search`")
 
                 with st.expander("ℹ️ Vector Search Details", expanded=False):
@@ -807,7 +786,7 @@ def main():
                                 "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                 "codebase": codebase,
                                 "databases_searched": databases_searched,
-                                "extraction_type": extraction_type,
+                                "extraction_type": "standard",
                                 "vector_query": vector_query,
                                 "total_files_processed": len(data['results']),
                                 "total_databases_found": len(database_information),
@@ -822,7 +801,7 @@ def main():
                         st.download_button(
                             label="📥 Download Complete Results as JSON",
                             data=results_json,
-                            file_name=f"database_extraction_{codebase}_{extraction_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            file_name=f"database_extraction_{codebase}_standard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             mime="application/json"
                         )
 
@@ -831,7 +810,7 @@ def main():
                         st.download_button(
                             label="📥 Download Database Info Only (Clean Format)",
                             data=clean_results_json,
-                            file_name=f"database_info_clean_{codebase}_{extraction_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            file_name=f"database_info_clean_{codebase}_standard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             mime="application/json"
                         )
 
