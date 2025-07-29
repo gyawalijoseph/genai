@@ -860,6 +860,45 @@ def main():
                             st.success("✅ **Extraction completed successfully!** Found database information")
 
                         # Transform to the exact requested format
+                        def is_database_related(db_entry):
+                            """Check if the extracted information is actually database-related"""
+                            if not isinstance(db_entry, dict):
+                                return False
+                                
+                            # Database-related keywords to look for
+                            db_keywords = [
+                                'database', 'db', 'table', 'tables', 'schema', 'column', 'columns',
+                                'sql', 'query', 'queries', 'select', 'insert', 'update', 'delete',
+                                'create', 'drop', 'connection', 'datasource', 'jdbc', 'postgresql',
+                                'mysql', 'oracle', 'mongodb', 'redis', 'cassandra', 'hibernate',
+                                'jpa', 'entity', 'repository', 'dao', 'crud', 'orm', 'migration',
+                                'index', 'primary_key', 'foreign_key', 'constraint', 'trigger',
+                                'procedure', 'function', 'view', 'sequence', 'transaction'
+                            ]
+                            
+                            # Check if any key or value contains database-related terms
+                            for key, value in db_entry.items():
+                                key_lower = str(key).lower()
+                                value_lower = str(value).lower() if value else ''
+                                
+                                # Check if key contains database terms
+                                if any(db_keyword in key_lower for db_keyword in db_keywords):
+                                    return True
+                                    
+                                # Check if value contains database terms
+                                if any(db_keyword in value_lower for db_keyword in db_keywords):
+                                    return True
+                                    
+                                # Check for SQL-like patterns
+                                if any(sql_pattern in value_lower for sql_pattern in ['create table', 'select from', 'insert into', 'update set', 'delete from']):
+                                    return True
+                                    
+                                # Check for database connection patterns
+                                if any(conn_pattern in value_lower for conn_pattern in ['jdbc:', 'postgresql://', 'mysql://', 'mongodb://', 'redis://']):
+                                    return True
+                            
+                            return False
+                        
                         def transform_to_new_format(db_info_list):
                             """Transform database information to the exact requested format"""
                             transformed_output = {
@@ -873,6 +912,10 @@ def main():
                             
                             for i, db_entry in enumerate(db_info_list):
                                 if not isinstance(db_entry, dict):
+                                    continue
+                                    
+                                # Filter out non-database related information
+                                if not is_database_related(db_entry):
                                     continue
                                     
                                 # Determine source file name
@@ -891,10 +934,12 @@ def main():
                                     # Transform legacy format to new format
                                     table_entry = {source_file: {}}
                                     
-                                    # Look for table-related information
-                                    found_tables = False
+                                    # Look for table-related information with expanded database keywords
+                                    found_tables = False  
+                                    db_table_keywords = ['table', 'tables', 'table_name', 'table_names', 'schema', 'entity', 'collection', 'model']
+                                    
                                     for key, value in db_entry.items():
-                                        if key.lower() in ['table', 'tables', 'table_name', 'table_names', 'schema']:
+                                        if key.lower() in db_table_keywords or any(keyword in key.lower() for keyword in db_table_keywords):
                                             found_tables = True
                                             if isinstance(value, str):
                                                 table_entry[source_file][value] = {
@@ -921,9 +966,16 @@ def main():
                                             "Field Information": []
                                         }
                                         
-                                        # Convert each key-value pair to field information
+                                        # Convert each key-value pair to field information, but only database-related ones
+                                        db_related_fields = ['host', 'port', 'database', 'username', 'password', 'connection_string', 'datasource', 'schema', 'driver', 'url']
+                                        
                                         for key, value in db_entry.items():
-                                            if not key.startswith('_') and key not in ['source_file', 'raw_llm_output', 'parsing_error']:
+                                            key_lower = str(key).lower()
+                                            if (
+                                                not key.startswith('_') and 
+                                                key not in ['source_file', 'raw_llm_output', 'parsing_error'] and
+                                                (key_lower in db_related_fields or any(db_field in key_lower for db_field in db_related_fields))
+                                            ):
                                                 field_info = {
                                                     "column_name": str(key),
                                                     "data_type": type(value).__name__,
@@ -934,7 +986,9 @@ def main():
                                                     field_info["value"] = value
                                                 table_entry[source_file]["EXTRACTED_DB_INFO"]["Field Information"].append(field_info)
                                     
-                                    transformed_output["Table Information"].append(table_entry)
+                                    # Only add if there's actual database content
+                                    if table_entry[source_file] and (found_tables or table_entry[source_file]["EXTRACTED_DB_INFO"]["Field Information"]):
+                                        transformed_output["Table Information"].append(table_entry)
                                     
                                     # Look for SQL queries in the data
                                     for key, value in db_entry.items():

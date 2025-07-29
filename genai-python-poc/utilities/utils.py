@@ -42,5 +42,17 @@ def similarity_search_pgvector(codebase, query, vector_results_count):
     })
 
     similarity_search_response = vectorstore.similarity_search(query, k=vector_results_count)
-    results = [{'page_content': doc.page_content, 'metadata': doc.metadata} for doc in similarity_search_response]
-    return results
+    
+    # Filter out unwanted files from the results
+    excluded_files = ['buildblock.yaml', 'buildblock.yml', '.buildblock.yaml', '.buildblock.yml']
+    filtered_results = []
+    
+    for doc in similarity_search_response:
+        source_file = doc.metadata.get('source', '')
+        file_name = source_file.split('/')[-1] if '/' in source_file else source_file
+        
+        # Skip excluded files
+        if file_name.lower() not in [f.lower() for f in excluded_files]:
+            filtered_results.append({'page_content': doc.page_content, 'metadata': doc.metadata})
+    
+    return filtered_results
