@@ -668,17 +668,23 @@ def main():
 
         with col2:
             vector_results_count = st.number_input(
-                '📊 Max Results Count:',
+                '📊 Max Results Count (per database):',
                 value=10,
                 min_value=1,
                 max_value=50,
-                help="Maximum number of files to process from vector search"
+                help="Maximum number of files to process from each vector database"
             )
-
-            search_suffix = st.text_input(
-                "🔍 Search Database Suffix:",
-                value="-external-files",
-                help="Suffix to add to codebase name for vector search (e.g., -external-files, -internal-files)"
+            
+            include_external = st.checkbox(
+                "🔍 Include External Files",
+                value=True,
+                help="Search in {codebase}-external-files database"
+            )
+            
+            include_codebase = st.checkbox(
+                "💻 Include Main Codebase",
+                value=True,
+                help="Search in main {codebase} database"
             )
 
         st.markdown("### 🤖 LLM Prompt Configuration")
