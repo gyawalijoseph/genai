@@ -692,43 +692,7 @@ def get_extraction_config(extraction_type):
     """Get configuration for different extraction types"""
     configs = {
         "standard": {
-            "detection_prompt": """Analyze the provided code snippet for database-related information including table schemas, field definitions, SQL queries, and database configurations.
-
-If no database information is found, reply with exactly: no
-
-If database information is found, extract it in this EXACT JSON format:
-{
-  "Table Information": [
-    {
-      "filename.extension": {
-        "TABLE_NAME": {
-          "Field Information": [
-            {
-              "column_name": "field_name",
-              "data_type": "data_type",
-              "CRUD": "operations"
-            }
-          ]
-        }
-      }
-    }
-  ],
-  "SQL_QUERIES": ["INSERT INTO table...", "SELECT * FROM..."],
-  "Invalid_SQL_Queries": [
-    {
-      "source_file": "filename.extension",
-      "query": "malformed SQL query"
-    }
-  ]
-}
-
-IMPORTANT RULES:
-- Reply with ONLY the JSON, no other text or markdown
-- Use actual filenames, table names, and field names from the code
-- Include CRUD operations: READ, WRITE, INSERT, UPDATE, DELETE
-- Include all SQL queries found in SQL_QUERIES array
-- Include malformed/invalid SQL in Invalid_SQL_Queries with source file
-- Ensure the JSON is valid and properly formatted""",
+            "detection_prompt": "Given the provided code snippet, identify if there are database-related configurations, connections, or queries present? If none, reply back with 'no'. Else extract the database information. Place in a json with keys for database name, connection string, host, port, username, schema, table names, or any other database-related information found. Reply with only the JSON. Make sure it's a valid JSON.",
             "validation_prompt": "Is this valid database-related information? If yes, reply with 'yes'. If no, reply with 'no'.",
             "text_cleanup_rules": [
                 {"find": "@aexp", "replace": "@aexps"},
@@ -933,25 +897,80 @@ def main():
                             st.success("✅ **Extraction completed successfully!** Found database information")
 
                         # Transform to the exact requested format
-                        transformed_output = {
-                            "Table Information": [],
-                            "SQL_QUERIES": [],
-                            "Invalid_SQL_Queries": []
-                        }
-                        
-                        # Process each database entry
-                        for db_entry in database_information:
-                            if isinstance(db_entry, dict):
+                        def transform_to_new_format(db_info_list):
+                            """Transform database information to the new format structure"""
+                            transformed_output = {
+                                "Table Information": [],
+                                "SQL_QUERIES": [],
+                                "Invalid_SQL_Queries": []
+                            }
+                            
+                            for i, db_entry in enumerate(db_info_list):
+                                if not isinstance(db_entry, dict):
+                                    continue
+                                    
+                                # Create a filename for this entry (use index if no clear source)
+                                source_file = f"extracted_data_{i+1}.unknown"
+                                if 'source_file' in db_entry:
+                                    source_file = db_entry['source_file']
+                                elif len(data.get('results', [])) > i:
+                                    source_file = data['results'][i].get('metadata', {}).get('source', source_file)
+                                
                                 # If it already has the new format, merge it
                                 if "Table Information" in db_entry:
                                     transformed_output["Table Information"].extend(db_entry.get("Table Information", []))
-                                if "SQL_QUERIES" in db_entry:
                                     transformed_output["SQL_QUERIES"].extend(db_entry.get("SQL_QUERIES", []))
-                                if "Invalid_SQL_Queries" in db_entry:
                                     transformed_output["Invalid_SQL_Queries"].extend(db_entry.get("Invalid_SQL_Queries", []))
-                                # If it's legacy format, try to transform it
-                                elif any(key for key in db_entry.keys() if key not in ["Table Information", "SQL_QUERIES", "Invalid_SQL_Queries"]):
-                                    transformed_output["Table Information"].append(db_entry)
+                                else:
+                                    # Transform legacy format to new format
+                                    table_entry = {source_file: {}}
+                                    
+                                    # Look for table-related information
+                                    for key, value in db_entry.items():
+                                        if key.lower() in ['table', 'tables', 'table_name', 'table_names', 'schema']:
+                                            if isinstance(value, str):
+                                                table_entry[source_file][value] = {
+                                                    "Field Information": [{
+                                                        "column_name": "extracted_info",
+                                                        "data_type": "unknown",
+                                                        "CRUD": "UNKNOWN"
+                                                    }]
+                                                }
+                                            elif isinstance(value, list):
+                                                for table_name in value:
+                                                    if isinstance(table_name, str):
+                                                        table_entry[source_file][table_name] = {
+                                                            "Field Information": [{
+                                                                "column_name": "extracted_info",
+                                                                "data_type": "unknown",
+                                                                "CRUD": "UNKNOWN"
+                                                            }]
+                                                        }
+                                    
+                                    # If no specific table info found, create generic entry
+                                    if not table_entry[source_file]:
+                                        table_entry[source_file]["EXTRACTED_DB_INFO"] = {
+                                            "Field Information": [{
+                                                "column_name": str(key),
+                                                "data_type": type(value).__name__,
+                                                "CRUD": "EXTRACTED"
+                                            } for key, value in db_entry.items() if not key.startswith('_')]
+                                        }
+                                    
+                                    transformed_output["Table Information"].append(table_entry)
+                                    
+                                    # Look for SQL queries in the data
+                                    for key, value in db_entry.items():
+                                        if 'sql' in key.lower() or 'query' in key.lower():
+                                            if isinstance(value, str):
+                                                transformed_output["SQL_QUERIES"].append(value)
+                                            elif isinstance(value, list):
+                                                transformed_output["SQL_QUERIES"].extend([str(q) for q in value])
+                            
+                            return transformed_output
+                        
+                        # Apply the transformation
+                        transformed_output = transform_to_new_format(database_information)
                         
                         # Format output in the exact requested structure
                         final_output = {
