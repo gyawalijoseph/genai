@@ -7,7 +7,7 @@ from datetime import datetime
 
 # Dynamic configuration - can be modified for any codebase
 DEFAULT_DATABASE_SYSTEM_PROMPT = "You are an expert at analyzing code for database configurations, connections, queries, and data models."
-DEFAULT_VECTOR_QUERY = "database sql connection query schema table model"
+DEFAULT_VECTOR_QUERY = "sql query select insert update delete database table schema"
 LOCAL_BACKEND_URL = "http://localhost:5000"
 LLM_API_ENDPOINT = "/LLM-API"
 HEADERS = {"Content-Type": "application/json"}
@@ -679,7 +679,7 @@ def get_extraction_config(extraction_type):
     """Get configuration for different extraction types"""
     configs = {
         "standard": {
-            "detection_prompt": "Given the provided code snippet, identify if there are database-related configurations, connections, or queries present? If none, reply back with 'no'. Else extract the database information. Place in a json with keys for database name, connection string, host, port, username, schema, table names, or any other database-related information found. Reply with only the JSON. Make sure it's a valid JSON.",
+            "detection_prompt": "Analyze the provided code snippet for SQL queries and database operations. Look for SELECT, INSERT, UPDATE, DELETE statements, table definitions, and database field information. If no SQL queries or database operations are found, reply with 'no'. If found, extract ONLY the database information in this exact JSON format: {'Table Information': [{'TABLE_NAME': {'Field Information': [{'column_name': 'field_name', 'data_type': 'type', 'CRUD': 'operation'}]}}], 'SQL_QUERIES': ['valid SQL statements'], 'Invalid_SQL_Queries': [{'source_file': 'filename', 'query': 'malformed query'}]}. Reply with only the JSON.",
             "validation_prompt": "Is this valid database-related information? If yes, reply with 'yes'. If no, reply with 'no'.",
             "text_cleanup_rules": [
                 {"find": "@aexp", "replace": "@aexps"},
@@ -861,40 +861,33 @@ def main():
 
                         # Transform to the exact requested format
                         def is_database_related(db_entry):
-                            """Check if the extracted information is actually database-related"""
+                            """Strict check if the extracted information contains SQL queries or database operations"""
                             if not isinstance(db_entry, dict):
                                 return False
-                                
-                            # Database-related keywords to look for
-                            db_keywords = [
-                                'database', 'db', 'table', 'tables', 'schema', 'column', 'columns',
-                                'sql', 'query', 'queries', 'select', 'insert', 'update', 'delete',
-                                'create', 'drop', 'connection', 'datasource', 'jdbc', 'postgresql',
-                                'mysql', 'oracle', 'mongodb', 'redis', 'cassandra', 'hibernate',
-                                'jpa', 'entity', 'repository', 'dao', 'crud', 'orm', 'migration',
-                                'index', 'primary_key', 'foreign_key', 'constraint', 'trigger',
-                                'procedure', 'function', 'view', 'sequence', 'transaction'
-                            ]
                             
-                            # Check if any key or value contains database-related terms
+                            # Check if it already has the correct format
+                            if "Table Information" in db_entry or "SQL_QUERIES" in db_entry or "Invalid_SQL_Queries" in db_entry:
+                                return True
+                                
+                            # Look for explicit SQL queries and database operations
+                            sql_keywords = ['select', 'insert', 'update', 'delete', 'create table', 'drop table', 'alter table']
+                            db_operation_keywords = ['table', 'column', 'field', 'index', 'constraint', 'primary key', 'foreign key']
+                            
+                            # Check if any key or value contains SQL queries or database operations
                             for key, value in db_entry.items():
                                 key_lower = str(key).lower()
                                 value_lower = str(value).lower() if value else ''
                                 
-                                # Check if key contains database terms
-                                if any(db_keyword in key_lower for db_keyword in db_keywords):
+                                # Check for SQL queries
+                                if any(sql_keyword in value_lower for sql_keyword in sql_keywords):
                                     return True
                                     
-                                # Check if value contains database terms
-                                if any(db_keyword in value_lower for db_keyword in db_keywords):
+                                # Check for database operation keywords
+                                if any(db_keyword in key_lower or db_keyword in value_lower for db_keyword in db_operation_keywords):
                                     return True
                                     
-                                # Check for SQL-like patterns
-                                if any(sql_pattern in value_lower for sql_pattern in ['create table', 'select from', 'insert into', 'update set', 'delete from']):
-                                    return True
-                                    
-                                # Check for database connection patterns
-                                if any(conn_pattern in value_lower for conn_pattern in ['jdbc:', 'postgresql://', 'mysql://', 'mongodb://', 'redis://']):
+                                # Check for SQL-like patterns in values
+                                if any(sql_pattern in value_lower for sql_pattern in ['from ', ' where ', ' join ', ' group by ', ' order by ']):
                                     return True
                             
                             return False
@@ -926,92 +919,94 @@ def main():
                                     source_file = data['results'][i].get('metadata', {}).get('source', source_file)
                                 
                                 # If it already has the new format, merge it
-                                if "Table Information" in db_entry:
-                                    transformed_output["Table Information"].extend(db_entry.get("Table Information", []))
+                                if "Table Information" in db_entry or "SQL_QUERIES" in db_entry or "Invalid_SQL_Queries" in db_entry:
+                                    # Handle new format data
+                                    if "Table Information" in db_entry:
+                                        for table_info in db_entry["Table Information"]:
+                                            if isinstance(table_info, dict):
+                                                # Wrap in source file if not already wrapped
+                                                if source_file not in str(table_info):
+                                                    wrapped_table = {source_file: table_info}
+                                                    transformed_output["Table Information"].append(wrapped_table)
+                                                else:
+                                                    transformed_output["Table Information"].append(table_info)
+                                    
                                     transformed_output["SQL_QUERIES"].extend(db_entry.get("SQL_QUERIES", []))
                                     transformed_output["Invalid_SQL_Queries"].extend(db_entry.get("Invalid_SQL_Queries", []))
                                 else:
-                                    # Transform legacy format to new format
+                                    # Transform legacy format - look for database patterns and SQL queries
                                     table_entry = {source_file: {}}
+                                    found_database_content = False
                                     
-                                    # Look for table-related information with expanded database keywords
-                                    found_tables = False  
-                                    db_table_keywords = ['table', 'tables', 'table_name', 'table_names', 'schema', 'entity', 'collection', 'model']
+                                    # Extract SQL queries from the data
+                                    for key, value in db_entry.items():
+                                        if isinstance(value, str):
+                                            # Look for SQL queries in string values
+                                            value_upper = value.upper()
+                                            if any(sql_word in value_upper for sql_word in ['SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', 'CREATE TABLE', 'DROP TABLE']):
+                                                # Check if it's a valid SQL query
+                                                if ('FROM' in value_upper or 'INTO' in value_upper or 'SET' in value_upper or 'TABLE' in value_upper):
+                                                    transformed_output["SQL_QUERIES"].append(value.strip())
+                                                    found_database_content = True
+                                                else:
+                                                    transformed_output["Invalid_SQL_Queries"].append({
+                                                        "source_file": source_file,
+                                                        "query": value.strip()
+                                                    })
+                                                    found_database_content = True
+                                        elif isinstance(value, list):
+                                            # Check for SQL queries in list values
+                                            for item in value:
+                                                if isinstance(item, str):
+                                                    item_upper = item.upper()
+                                                    if any(sql_word in item_upper for sql_word in ['SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', 'CREATE TABLE', 'DROP TABLE']):
+                                                        if ('FROM' in item_upper or 'INTO' in item_upper or 'SET' in item_upper or 'TABLE' in item_upper):
+                                                            transformed_output["SQL_QUERIES"].append(item.strip())
+                                                            found_database_content = True
+                                                        else:
+                                                            transformed_output["Invalid_SQL_Queries"].append({
+                                                                "source_file": source_file,
+                                                                "query": item.strip()
+                                                            })
+                                                            found_database_content = True
+                                    
+                                    # Look for table and field information
+                                    table_keywords = ['table_name', 'table', 'entity', 'model']
+                                    field_keywords = ['column', 'field', 'attribute']
                                     
                                     for key, value in db_entry.items():
-                                        if key.lower() in db_table_keywords or any(keyword in key.lower() for keyword in db_table_keywords):
-                                            found_tables = True
-                                            if isinstance(value, str):
+                                        key_lower = key.lower()
+                                        
+                                        # Check for table information
+                                        if any(keyword in key_lower for keyword in table_keywords):
+                                            if isinstance(value, str) and value.strip():
                                                 table_entry[source_file][value] = {
                                                     "Field Information": [{
-                                                        "column_name": "extracted_info",
+                                                        "column_name": "extracted_from_metadata",
                                                         "data_type": "unknown",
                                                         "CRUD": "UNKNOWN"
                                                     }]
                                                 }
-                                            elif isinstance(value, list):
-                                                for table_name in value:
-                                                    if isinstance(table_name, str):
-                                                        table_entry[source_file][table_name] = {
-                                                            "Field Information": [{
-                                                                "column_name": "extracted_info",
-                                                                "data_type": "unknown",
-                                                                "CRUD": "UNKNOWN"
-                                                            }]
-                                                        }
-                                    
-                                    # If no specific table info found, create generic entry with all extracted data
-                                    if not found_tables:
-                                        table_entry[source_file]["EXTRACTED_DB_INFO"] = {
-                                            "Field Information": []
-                                        }
+                                                found_database_content = True
                                         
-                                        # Convert each key-value pair to field information, but only database-related ones
-                                        db_related_fields = ['host', 'port', 'database', 'username', 'password', 'connection_string', 'datasource', 'schema', 'driver', 'url']
-                                        
-                                        for key, value in db_entry.items():
-                                            key_lower = str(key).lower()
-                                            if (
-                                                not key.startswith('_') and 
-                                                key not in ['source_file', 'raw_llm_output', 'parsing_error'] and
-                                                (key_lower in db_related_fields or any(db_field in key_lower for db_field in db_related_fields))
-                                            ):
-                                                field_info = {
-                                                    "column_name": str(key),
-                                                    "data_type": type(value).__name__,
-                                                    "CRUD": "EXTRACTED"
-                                                }
-                                                # If value contains useful info, add it
-                                                if isinstance(value, str) and len(value) < 100:
-                                                    field_info["value"] = value
-                                                table_entry[source_file]["EXTRACTED_DB_INFO"]["Field Information"].append(field_info)
+                                        # Check for field information
+                                        elif any(keyword in key_lower for keyword in field_keywords):
+                                            if not table_entry[source_file]:
+                                                table_entry[source_file]["EXTRACTED_TABLE"] = {"Field Information": []}
+                                            
+                                            if isinstance(value, str) and value.strip():
+                                                table_entry[source_file]["EXTRACTED_TABLE"]["Field Information"].append({
+                                                    "column_name": value,
+                                                    "data_type": "extracted",
+                                                    "CRUD": "UNKNOWN"
+                                                })
+                                                found_database_content = True
                                     
-                                    # Only add if there's actual database content
-                                    if table_entry[source_file] and (found_tables or table_entry[source_file]["EXTRACTED_DB_INFO"]["Field Information"]):
+                                    # Only add table information if we found actual database content
+                                    if found_database_content and table_entry[source_file]:
                                         transformed_output["Table Information"].append(table_entry)
                                     
-                                    # Look for SQL queries in the data
-                                    for key, value in db_entry.items():
-                                        if 'sql' in key.lower() or 'query' in key.lower():
-                                            if isinstance(value, str) and value.strip():
-                                                # Check if it looks like a valid SQL query
-                                                if any(sql_keyword in value.upper() for sql_keyword in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP']):
-                                                    transformed_output["SQL_QUERIES"].append(value)
-                                                else:
-                                                    transformed_output["Invalid_SQL_Queries"].append({
-                                                        "source_file": source_file,
-                                                        "query": value
-                                                    })
-                                            elif isinstance(value, list):
-                                                for query in value:
-                                                    if isinstance(query, str) and query.strip():
-                                                        if any(sql_keyword in query.upper() for sql_keyword in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP']):
-                                                            transformed_output["SQL_QUERIES"].append(query)
-                                                        else:
-                                                            transformed_output["Invalid_SQL_Queries"].append({
-                                                                "source_file": source_file,
-                                                                "query": query
-                                                            })
+                                    # SQL query extraction is now handled above in the main logic
                             
                             return transformed_output
                         
