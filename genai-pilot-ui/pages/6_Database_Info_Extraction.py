@@ -976,21 +976,21 @@ def main():
                         # Transform to the exact requested format
                         
                         
-                        def transform_to_new_format_with_llm(db_info_list):
-                            """Transform database information using LLM to generate final structured output"""
-                            if not db_info_list:
-                                return {
-                                    "Table Information": [],
-                                    "SQL_QUERIES": [],
-                                    "Invalid_SQL_Queries": []
-                                }
+                        def transform_with_workflow_approach(db_info_list):
+                            """Transform database information using structured workflows like spec_generation"""
+                            st.write("🏗️ **Building final structure using workflow approach...**")
                             
-                            # Prepare all extracted database information for LLM processing
-                            consolidated_data = {
-                                "extracted_database_info": [],
-                                "source_files": []
+                            # Initialize the final structure
+                            final_output = {
+                                "Table Information": [],
+                                "SQL_QUERIES": [],
+                                "Invalid_SQL_Queries": []
                             }
                             
+                            if not db_info_list:
+                                return final_output
+                            
+                            # Process each extracted database entry with structured workflows
                             for i, db_entry in enumerate(db_info_list):
                                 if not isinstance(db_entry, dict):
                                     continue
@@ -1002,163 +1002,318 @@ def main():
                                 elif len(data.get('results', [])) > i:
                                     source_file = data['results'][i].get('metadata', {}).get('source', source_file)
                                 
-                                # Get original codebase content
+                                # Get original codebase content for detailed analysis  
                                 original_codebase = ""
                                 if len(data.get('results', [])) > i:
                                     original_codebase = data['results'][i].get('page_content', '')
                                 
-                                consolidated_data["extracted_database_info"].append({
-                                    "source_file": source_file,
-                                    "extracted_info": db_entry,
-                                    "original_code": original_codebase[:2000] + "..." if len(original_codebase) > 2000 else original_codebase
-                                })
-                                consolidated_data["source_files"].append(source_file)
+                                st.write(f"**📄 Processing workflow for:** `{source_file}`")
+                                
+                                # Workflow 1: Extract Table Information
+                                table_info = extract_table_information_workflow(db_entry, original_codebase, source_file, system_prompt)
+                                if table_info:
+                                    final_output["Table Information"].append(table_info)
+                                
+                                # Workflow 2: Extract SQL Queries
+                                sql_queries = extract_sql_queries_workflow(db_entry, original_codebase, source_file, system_prompt)
+                                if sql_queries:
+                                    final_output["SQL_QUERIES"].extend(sql_queries)
+                                
+                                # Workflow 3: Extract and Validate Invalid SQL
+                                invalid_queries = extract_invalid_sql_workflow(db_entry, original_codebase, source_file, system_prompt)
+                                if invalid_queries:
+                                    final_output["Invalid_SQL_Queries"].extend(invalid_queries)
                             
-                            if not consolidated_data["extracted_database_info"]:
-                                return {
-                                    "Table Information": [],
-                                    "SQL_QUERIES": [],
-                                    "Invalid_SQL_Queries": []
-                                }
+                            return final_output
+                        
+                        def extract_table_information_workflow(db_entry, original_codebase, source_file, system_prompt):
+                            """Workflow to extract structured table information"""
+                            table_entry = {source_file: {}}
                             
-                            # Use LLM to generate the final structured output
-                            st.write("🤖 **Using LLM to generate final structured database information...**")
+                            # Step 1: Check if there's any table-related information in the extracted data
+                            table_indicators = ['table', 'column', 'field', 'schema', 'entity', 'model']
+                            has_table_info = any(indicator in str(db_entry).lower() for indicator in table_indicators)
                             
-                            # Build the prompt without f-string to avoid format issues with JSON
-                            file_count = len(consolidated_data['extracted_database_info'])
-                            extracted_data_json = json.dumps(consolidated_data, indent=2)
+                            if not has_table_info and not original_codebase:
+                                return None
                             
-                            final_structure_prompt = """Based on the following extracted database information from """ + str(file_count) + """ files, create a comprehensive final JSON structure.
-
-EXTRACTED DATA:
-""" + extracted_data_json + """
-
-Please analyze all the extracted database information and create a final JSON structure in this EXACT format:
-
-{
-  "Table Information": [
-    {
-      "source_file_name": {
-        "table_name": {
-          "Field Information": [
-            {
-              "column_name": "actual_column_name",
-              "data_type": "varchar/int/boolean/etc",
-              "CRUD": "READ, WRITE, UPDATE, DELETE"
-            }
-          ]
-        }
-      }
-    }
-  ],
-  "SQL_QUERIES": ["SELECT * FROM table1", "INSERT INTO table2 VALUES (...)"],
-  "Invalid_SQL_Queries": [
-    {
-      "source_file": "file.py",
-      "query": "incomplete sql",
-      "reason": "missing FROM clause"
-    }
-  ]
-}
-
-REQUIREMENTS:
-1. Use the actual table names, column names, and data types found in the extracted information
-2. For CRUD operations, analyze the code context to determine which operations are performed
-3. Include all valid SQL queries found in the code
-4. Categorize malformed or incomplete SQL queries as Invalid_SQL_Queries
-5. Use actual source file names from the extraction
-6. Ensure all data is properly populated from the extracted information
-7. Do not use placeholder values - use the actual extracted data
-
-Return ONLY the JSON structure, no additional text."""
-
+                            # Step 2: Use LLM to extract structured table information
                             url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
-                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             
-                            payload = {
+                            # First, check if there are tables present
+                            detection_payload = {
                                 "system_prompt": system_prompt,
-                                "user_prompt": final_structure_prompt,
-                                "codebase": extracted_data_json
+                                "user_prompt": "Does this code contain database table definitions, column information, or database schema? Answer 'yes' or 'no'.",
+                                "codebase": original_codebase if original_codebase else json.dumps(db_entry)
                             }
                             
                             try:
-                                with st.spinner("🔄 Generating final structured output..."):
-                                    response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
+                                with st.spinner(f"🔍 Detecting table information in {source_file}..."):
+                                    response = requests.post(url, json=detection_payload, headers=HEADERS, timeout=120)
                                 
-                                if response.status_code != 200:
-                                    st.warning(f"⚠️ **LLM final structuring failed:** HTTP {response.status_code}")
-                                    st.info("🔄 **Falling back to basic structure generation...**")
-                                    return _generate_fallback_structure(consolidated_data)
-                                
-                                response_json = response.json()
-                                status_code = response_json.get('status_code', response.status_code)
-                                
-                                if status_code != 200:
-                                    st.warning(f"⚠️ **LLM final structuring blocked:** {status_code}")
-                                    st.info("🔄 **Falling back to basic structure generation...**")
-                                    return _generate_fallback_structure(consolidated_data)
-                                
-                                output = response_json.get('output', '')
-                                
-                                # Parse the LLM-generated final structure
-                                final_structure, parse_error = robust_json_parse(output, "final_structure")
-                                
-                                if final_structure and isinstance(final_structure, dict):
-                                    # Validate the structure has required keys
-                                    required_keys = ["Table Information", "SQL_QUERIES", "Invalid_SQL_Queries"]
-                                    if all(key in final_structure for key in required_keys):
-                                        st.success("✅ **Final structure generated successfully by LLM!**")
-                                        return final_structure
-                                    else:
-                                        st.warning("⚠️ **LLM output missing required keys, using fallback**")
-                                        return _generate_fallback_structure(consolidated_data)
-                                else:
-                                    st.warning(f"⚠️ **Could not parse LLM final structure:** {parse_error}")
-                                    st.info("🔄 **Falling back to basic structure generation...**")
-                                    return _generate_fallback_structure(consolidated_data)
-                                
+                                if response.status_code == 200:
+                                    response_json = response.json()
+                                    if response_json.get('status_code', 200) == 200:
+                                        output = response_json.get('output', '').lower()
+                                        
+                                        if 'yes' in output:
+                                            st.success(f"✅ **Table information detected in {source_file}**")
+                                            
+                                            # Step 3: Extract detailed table information
+                                            extraction_payload = {
+                                                "system_prompt": system_prompt,
+                                                "user_prompt": "Extract table names, column names, and data types from this code. Format as: TABLE_NAME: column1(type1), column2(type2). List each table on a new line.",
+                                                "codebase": original_codebase if original_codebase else json.dumps(db_entry)
+                                            }
+                                            
+                                            with st.spinner(f"🔄 Extracting table details from {source_file}..."):
+                                                detail_response = requests.post(url, json=extraction_payload, headers=HEADERS, timeout=120)
+                                            
+                                            if detail_response.status_code == 200:
+                                                detail_json = detail_response.json()
+                                                if detail_json.get('status_code', 200) == 200:
+                                                    table_details = detail_json.get('output', '')
+                                                    
+                                                    # Parse the table details into structured format
+                                                    parsed_tables = parse_table_details(table_details)
+                                                    
+                                                    if parsed_tables:
+                                                        table_entry[source_file] = parsed_tables
+                                                        st.success(f"✅ **Extracted {len(parsed_tables)} table(s) from {source_file}**")
+                                                        return table_entry
+                                        else:
+                                            st.info(f"ℹ️ **No table information found in {source_file}**")
+                            
                             except Exception as e:
-                                st.warning(f"⚠️ **Error in LLM final structuring:** {str(e)}")
-                                st.info("🔄 **Falling back to basic structure generation...**")
-                                return _generate_fallback_structure(consolidated_data)
+                                st.warning(f"⚠️ **Table extraction failed for {source_file}: {str(e)}**")
+                            
+                            return None
                         
-                        def _generate_fallback_structure(consolidated_data):
-                            """Generate basic fallback structure when LLM processing fails"""
-                            fallback_output = {
-                                "Table Information": [],
-                                "SQL_QUERIES": [],
-                                "Invalid_SQL_Queries": []
+                        def extract_sql_queries_workflow(db_entry, original_codebase, source_file, system_prompt):
+                            """Workflow to extract valid SQL queries"""
+                            sql_queries = []
+                            
+                            # Step 1: Check for SQL indicators
+                            sql_indicators = ['select', 'insert', 'update', 'delete', 'create', 'drop', 'alter']
+                            content = (original_codebase if original_codebase else json.dumps(db_entry)).lower()
+                            has_sql = any(indicator in content for indicator in sql_indicators)
+                            
+                            if not has_sql:
+                                return sql_queries
+                            
+                            # Step 2: Use LLM to detect and extract SQL queries
+                            url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
+                            
+                            detection_payload = {
+                                "system_prompt": system_prompt,
+                                "user_prompt": "Are there SQL queries present in this code? Answer 'yes' or 'no'.",
+                                "codebase": original_codebase if original_codebase else json.dumps(db_entry)
                             }
                             
-                            for item in consolidated_data["extracted_database_info"]:
-                                source_file = item["source_file"]
-                                extracted_info = item["extracted_info"]
+                            try:
+                                with st.spinner(f"🔍 Detecting SQL queries in {source_file}..."):
+                                    response = requests.post(url, json=detection_payload, headers=HEADERS, timeout=120)
                                 
-                                # Create basic table entry
-                                table_entry = {source_file: {}}
-                                found_table_info = False
-                                
-                                # Look for database-related information
-                                for key, value in extracted_info.items():
-                                    if isinstance(value, str) and value.strip():
-                                        if any(keyword in key.lower() for keyword in ['table', 'column', 'field', 'database']):
-                                            table_entry[source_file]["EXTRACTED_TABLE"] = {
-                                                "Field Information": [{
-                                                    "column_name": key,
-                                                    "data_type": "extracted",
-                                                    "CRUD": "UNKNOWN"
-                                                }]
+                                if response.status_code == 200:
+                                    response_json = response.json()
+                                    if response_json.get('status_code', 200) == 200:
+                                        output = response_json.get('output', '').lower()
+                                        
+                                        if 'yes' in output:
+                                            st.success(f"✅ **SQL queries detected in {source_file}**")
+                                            
+                                            # Step 3: Extract the actual SQL queries
+                                            extraction_payload = {
+                                                "system_prompt": system_prompt,
+                                                "user_prompt": "List only the complete SQL queries from this code. One query per line. Do not modify or infer queries.",
+                                                "codebase": original_codebase if original_codebase else json.dumps(db_entry)
                                             }
-                                            found_table_info = True
-                                            break
-                                
-                                if found_table_info:
-                                    fallback_output["Table Information"].append(table_entry)
+                                            
+                                            with st.spinner(f"🔄 Extracting SQL queries from {source_file}..."):
+                                                query_response = requests.post(url, json=extraction_payload, headers=HEADERS, timeout=120)
+                                            
+                                            if query_response.status_code == 200:
+                                                query_json = query_response.json()
+                                                if query_json.get('status_code', 200) == 200:
+                                                    queries_text = query_json.get('output', '')
+                                                    
+                                                    # Parse and validate queries
+                                                    extracted_queries = parse_sql_queries(queries_text)
+                                                    valid_queries = []
+                                                    
+                                                    for query in extracted_queries:
+                                                        if validate_sql_query(query):
+                                                            valid_queries.append(query)
+                                                    
+                                                    if valid_queries:
+                                                        sql_queries.extend(valid_queries)
+                                                        st.success(f"✅ **Extracted {len(valid_queries)} valid SQL query(ies) from {source_file}**")
+                                        else:
+                                            st.info(f"ℹ️ **No SQL queries found in {source_file}**")
+                                            
+                            except Exception as e:
+                                st.warning(f"⚠️ **SQL extraction failed for {source_file}: {str(e)}**")
                             
-                            return fallback_output
+                            return sql_queries
                         
-                        # Apply the transformation using LLM
-                        transformed_data = transform_to_new_format_with_llm(database_information)
+                        def extract_invalid_sql_workflow(db_entry, original_codebase, source_file, system_prompt):
+                            """Workflow to extract and categorize invalid SQL queries"""
+                            invalid_queries = []
+                            
+                            # This is a more advanced workflow that could identify malformed SQL
+                            # For now, we'll implement a basic version
+                            
+                            try:
+                                # Look for SQL-like patterns that might be incomplete
+                                content = original_codebase if original_codebase else json.dumps(db_entry)
+                                
+                                # Simple patterns for potentially incomplete SQL
+                                incomplete_patterns = [
+                                    r'SELECT\s+\*\s*$',  # SELECT * without FROM
+                                    r'UPDATE\s+\w+\s*$',  # UPDATE without SET
+                                    r'INSERT\s+INTO\s+\w+\s*$',  # INSERT without VALUES
+                                    r'DELETE\s+FROM\s*$'  # DELETE FROM without table
+                                ]
+                                
+                                for pattern in incomplete_patterns:
+                                    matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
+                                    for match in matches:
+                                        invalid_queries.append({
+                                            "source_file": source_file,
+                                            "query": match,
+                                            "reason": "Incomplete SQL statement"
+                                        })
+                                
+                                if invalid_queries:
+                                    st.warning(f"⚠️ **Found {len(invalid_queries)} potentially invalid SQL pattern(s) in {source_file}**")
+                                    
+                            except Exception as e:
+                                st.warning(f"⚠️ **Invalid SQL detection failed for {source_file}: {str(e)}**")
+                            
+                            return invalid_queries
+                        
+                        def parse_table_details(table_details_text):
+                            """Parse table details text into structured format"""
+                            tables = {}
+                            
+                            try:
+                                lines = table_details_text.strip().split('\n')
+                                current_table = None
+                                
+                                for line in lines:
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    
+                                    # Look for table definitions (TABLE_NAME: columns)
+                                    if ':' in line:
+                                        parts = line.split(':', 1)
+                                        table_name = parts[0].strip()
+                                        columns_part = parts[1].strip() if len(parts) > 1 else ""
+                                        
+                                        current_table = table_name
+                                        tables[current_table] = {"Field Information": []}
+                                        
+                                        # Parse columns
+                                        if columns_part:
+                                            columns = parse_columns_from_text(columns_part)
+                                            tables[current_table]["Field Information"].extend(columns)
+                                    
+                                    # Look for individual column definitions
+                                    elif current_table and ('(' in line and ')' in line):
+                                        columns = parse_columns_from_text(line)
+                                        tables[current_table]["Field Information"].extend(columns)
+                                
+                            except Exception as e:
+                                st.warning(f"⚠️ **Error parsing table details: {str(e)}**")
+                            
+                            return tables
+                        
+                        def parse_columns_from_text(columns_text):
+                            """Parse column information from text"""
+                            columns = []
+                            
+                            try:
+                                # Split by commas and parse each column
+                                column_parts = columns_text.split(',')
+                                
+                                for part in column_parts:
+                                    part = part.strip()
+                                    if not part:
+                                        continue
+                                    
+                                    # Look for pattern: column_name(type)
+                                    match = re.match(r'(\w+)\s*\(\s*([^)]+)\s*\)', part)
+                                    if match:
+                                        column_name = match.group(1)
+                                        data_type = match.group(2)
+                                        
+                                        columns.append({
+                                            "column_name": column_name,
+                                            "data_type": data_type,
+                                            "CRUD": "UNKNOWN"  # Default, could be enhanced
+                                        })
+                                    else:
+                                        # Fallback: treat the whole part as column name
+                                        if part and not any(char in part for char in [':', '(', ')']):
+                                            columns.append({
+                                                "column_name": part,
+                                                "data_type": "unknown",
+                                                "CRUD": "UNKNOWN"
+                                            })
+                                
+                            except Exception as e:
+                                st.warning(f"⚠️ **Error parsing columns: {str(e)}**")
+                            
+                            return columns
+                        
+                        def parse_sql_queries(queries_text):
+                            """Parse SQL queries from text"""
+                            queries = []
+                            
+                            try:
+                                lines = queries_text.strip().split('\n')
+                                current_query = ""
+                                
+                                for line in lines:
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    
+                                    # Remove common prefixes
+                                    line = re.sub(r'^\d+\.\s*', '', line)  # Remove numbered list
+                                    line = re.sub(r'^[-*]\s*', '', line)   # Remove bullet points
+                                    
+                                    if line:
+                                        current_query = line
+                                        if current_query:
+                                            queries.append(current_query)
+                                
+                            except Exception as e:
+                                st.warning(f"⚠️ **Error parsing SQL queries: {str(e)}**")
+                            
+                            return queries
+                        
+                        def validate_sql_query(query):
+                            """Basic validation of SQL query"""
+                            if not query or len(query.strip()) < 5:
+                                return False
+                            
+                            query_upper = query.upper().strip()
+                            
+                            # Must start with a SQL keyword
+                            sql_keywords = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER']
+                            if not any(query_upper.startswith(keyword) for keyword in sql_keywords):
+                                return False
+                            
+                            # Basic structure validation
+                            if query_upper.startswith('SELECT') and 'FROM' not in query_upper:
+                                return False
+                                
+                            return True
+                        
+                        # Apply the transformation using workflow approach
+                        transformed_data = transform_with_workflow_approach(database_information)
                         
                         # Format output in the exact requested structure
                         final_output = {
