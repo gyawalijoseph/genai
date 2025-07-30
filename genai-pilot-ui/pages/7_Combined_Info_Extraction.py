@@ -637,12 +637,14 @@ def enhanced_workflow_with_llm_visibility(db_info_list, all_vector_results, syst
             url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            table_prompt = f"""Based on the extracted database information and original code, provide detailed table structure.
+            # Build the prompt without f-string to avoid formatting issues with JSON examples
+            extracted_info_json = json.dumps(db_entry)
+            table_prompt = """Based on the extracted database information and original code, provide detailed table structure.
 
-EXTRACTED INFO: {json.dumps(db_entry)}
+EXTRACTED INFO: """ + extracted_info_json + """
 
 Provide a JSON response with table names, column names, data types, and likely CRUD operations. Format:
-{{"table_name": {{"columns": [{{"name": "column_name", "type": "data_type", "crud": "READ,WRITE"}}]}}}}
+{"table_name": {"columns": [{"name": "column_name", "type": "data_type", "crud": "READ,WRITE"}]}}
 
 If no clear table structure can be determined, respond with 'no clear structure'."""
 
@@ -717,12 +719,14 @@ If no clear table structure can be determined, respond with 'no clear structure'
         # Enhanced SQL query extraction with LLM call visibility
         st.write("**🔍 Step 2: Enhanced SQL Query Extraction**")
         
-        sql_prompt = f"""Analyze the following database information and original code for SQL queries.
+        # Build the SQL prompt without f-string to avoid formatting issues
+        extracted_info_json = json.dumps(db_entry)
+        sql_prompt = """Analyze the following database information and original code for SQL queries.
 
-EXTRACTED INFO: {json.dumps(db_entry)}
+EXTRACTED INFO: """ + extracted_info_json + """
 
 Find and list any complete SQL queries. Separate valid queries from incomplete/invalid ones.
-Respond with JSON: {{"valid_queries": ["query1", "query2"], "invalid_queries": [{{"query": "incomplete", "reason": "missing FROM"}}]}}
+Respond with JSON: {"valid_queries": ["query1", "query2"], "invalid_queries": [{"query": "incomplete", "reason": "missing FROM"}]}
 
 If no SQL queries found, respond with 'no sql queries'."""
 
