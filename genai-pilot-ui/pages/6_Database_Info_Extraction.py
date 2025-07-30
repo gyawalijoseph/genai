@@ -978,44 +978,6 @@ def main():
                             st.success("✅ **Extraction completed successfully!** Found database information")
 
                         # Transform to the exact requested format
-                        def is_database_related(db_entry):
-                            """Check if the extracted information is actually database-related"""
-                            if not isinstance(db_entry, dict):
-                                return False
-                                
-                            # Database-related keywords to look for
-                            db_keywords = [
-                                'database', 'db', 'table', 'tables', 'schema', 'column', 'columns',
-                                'sql', 'query', 'queries', 'select', 'insert', 'update', 'delete',
-                                'create', 'drop', 'connection', 'datasource', 'jdbc', 'postgresql',
-                                'mysql', 'oracle', 'mongodb', 'redis', 'cassandra', 'hibernate',
-                                'jpa', 'entity', 'repository', 'dao', 'crud', 'orm', 'migration',
-                                'index', 'primary_key', 'foreign_key', 'constraint', 'trigger',
-                                'procedure', 'function', 'view', 'sequence', 'transaction'
-                            ]
-                            
-                            # Check if any key or value contains database-related terms
-                            for key, value in db_entry.items():
-                                key_lower = str(key).lower()
-                                value_lower = str(value).lower() if value else ''
-                                
-                                # Check if key contains database terms
-                                if any(db_keyword in key_lower for db_keyword in db_keywords):
-                                    return True
-                                    
-                                # Check if value contains database terms
-                                if any(db_keyword in value_lower for db_keyword in db_keywords):
-                                    return True
-                                    
-                                # Check for SQL-like patterns
-                                if any(sql_pattern in value_lower for sql_pattern in ['create table', 'select from', 'insert into', 'update set', 'delete from']):
-                                    return True
-                                    
-                                # Check for database connection patterns
-                                if any(conn_pattern in value_lower for conn_pattern in ['jdbc:', 'postgresql://', 'mysql://', 'mongodb://', 'redis://']):
-                                    return True
-                            
-                            return False
                         
                         
                         def transform_to_new_format_with_llm(db_info_list):
@@ -1035,10 +997,6 @@ def main():
                             
                             for i, db_entry in enumerate(db_info_list):
                                 if not isinstance(db_entry, dict):
-                                    continue
-                                    
-                                # Filter out non-database related information
-                                if not is_database_related(db_entry):
                                     continue
                                 
                                 # Get source file information
@@ -1070,38 +1028,42 @@ def main():
                             # Use LLM to generate the final structured output
                             st.write("🤖 **Using LLM to generate final structured database information...**")
                             
-                            final_structure_prompt = f"""Based on the following extracted database information from {len(consolidated_data['extracted_database_info'])} files, create a comprehensive final JSON structure.
+                            # Build the prompt without f-string to avoid format issues with JSON
+                            file_count = len(consolidated_data['extracted_database_info'])
+                            extracted_data_json = json.dumps(consolidated_data, indent=2)
+                            
+                            final_structure_prompt = """Based on the following extracted database information from """ + str(file_count) + """ files, create a comprehensive final JSON structure.
 
 EXTRACTED DATA:
-{json.dumps(consolidated_data, indent=2)}
+""" + extracted_data_json + """
 
 Please analyze all the extracted database information and create a final JSON structure in this EXACT format:
 
-{{
+{
   "Table Information": [
-    {{
-      "source_file_name": {{
-        "table_name": {{
+    {
+      "source_file_name": {
+        "table_name": {
           "Field Information": [
-            {{
+            {
               "column_name": "actual_column_name",
               "data_type": "varchar/int/boolean/etc",
               "CRUD": "READ, WRITE, UPDATE, DELETE"
-            }}
+            }
           ]
-        }}
-      }}
-    }}
+        }
+      }
+    }
   ],
   "SQL_QUERIES": ["SELECT * FROM table1", "INSERT INTO table2 VALUES (...)"],
   "Invalid_SQL_Queries": [
-    {{
+    {
       "source_file": "file.py",
       "query": "incomplete sql",
       "reason": "missing FROM clause"
-    }}
+    }
   ]
-}}
+}
 
 REQUIREMENTS:
 1. Use the actual table names, column names, and data types found in the extracted information
@@ -1120,7 +1082,7 @@ Return ONLY the JSON structure, no additional text."""
                             payload = {
                                 "system_prompt": system_prompt,
                                 "user_prompt": final_structure_prompt,
-                                "codebase": json.dumps(consolidated_data, indent=2)
+                                "codebase": extracted_data_json
                             }
                             
                             try:
