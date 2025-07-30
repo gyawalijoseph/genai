@@ -5,6 +5,8 @@ import os
 import re
 from datetime import datetime
 
+from utils.githubUtil import commit_json
+
 # Dynamic configuration - can be modified for any codebase
 DEFAULT_DATABASE_SYSTEM_PROMPT = "You are an expert at analyzing code for database configurations, connections, queries, and data models."
 DEFAULT_SERVER_SYSTEM_PROMPT = "You are an expert at analyzing code for server configurations, host information, and network settings."
@@ -787,98 +789,17 @@ def transform_with_workflow_approach(db_info_list, all_vector_results):
 
 
 def commit_json_to_github(codebase, json_data):
-    """Enhanced GitHub commit function with user confirmation"""
+    """Simple GitHub commit function using utils/githubUtil.py"""
     st.subheader("📤 GitHub Integration")
     
-    if st.checkbox("🔧 **Enable GitHub Push**", help="Check this to enable pushing results to GitHub"):
-        st.info("⚠️ **GitHub Configuration Required:** Update the URL and credentials below")
-        
-        # Display the JSON that will be pushed
-        st.write("**📋 Data to be pushed to GitHub:**")
-        with st.expander("📄 View JSON Data", expanded=False):
-            st.code(json.dumps(json_data, indent=2), language="json")
-        st.write(f"**📊 Data size:** {len(json.dumps(json_data))} characters")
-        
-        # Configuration options
-        with st.expander("🔧 GitHub Configuration", expanded=True):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                github_token = st.text_input("GitHub Token:", type="password", help="Your GitHub personal access token")
-                repo_owner = st.text_input("Repository Owner:", value="yourusername", help="GitHub username or organization")
-                repo_name = st.text_input("Repository Name:", value="yourrepo", help="Name of the repository")
-                
-            with col2:
-                file_path = st.text_input("File Path:", value=f"extractions/{codebase}_combined_extraction.json", help="Path where to save the file in the repo")
-                branch = st.text_input("Branch:", value="main", help="Target branch")
-                commit_message = st.text_area("Commit Message:", value=f"Add combined extraction results for {codebase}", help="Commit message")
-        
-        # Validation
-        if not github_token:
-            st.warning("⚠️ **GitHub token is required for authentication**")
-            st.info("💡 Generate a token at: https://github.com/settings/tokens")
-        elif not repo_owner or not repo_name:
-            st.warning("⚠️ **Repository owner and name are required**")
-        else:
-            # Confirmation step
-            st.write("**✅ Configuration Complete - Ready to Push**")
-            
-            if st.button("🚀 **CONFIRM: Push to GitHub**", type="primary"):
-                st.warning("⚠️ **This will commit data to your GitHub repository!**")
-                st.write(f"**Target:** `{repo_owner}/{repo_name}` → `{file_path}` (branch: `{branch}`)")
-                
-                # Final confirmation with unique key
-                confirm_key = f"github_confirm_{codebase}_{datetime.now().strftime('%H%M%S')}"
-                if st.button("✅ **FINAL CONFIRMATION: Yes, push to GitHub**", type="secondary", key=confirm_key):
-                    try:
-                        # Actual GitHub API implementation
-                        github_url = f"http://localhost:5000/github-commit"
-                        
-                        payload = {
-                            "codebase": codebase,
-                            "github_token": github_token,
-                            "repo_owner": repo_owner,
-                            "repo_name": repo_name,
-                            "file_path": file_path,
-                            "branch": branch,
-                            "commit_message": commit_message,
-                            "content": json_data
-                        }
-                        
-                        with st.spinner("📤 Pushing to GitHub..."):
-                            response = requests.post(github_url, json=payload, headers=HEADERS, timeout=60)
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get('status') == 'success':
-                                st.success("🎉 **Successfully pushed to GitHub!**")
-                                st.info(f"**Repository:** {repo_owner}/{repo_name}")
-                                st.info(f"**Branch:** {branch}")
-                                st.info(f"**File Path:** {file_path}")
-                                st.info(f"**Commit Message:** {commit_message}")
-                                
-                                if 'commit_url' in result:
-                                    st.info(f"**Commit URL:** {result['commit_url']}")
-                                    
-                                # Clear sensitive data from session
-                            else:
-                                st.error(f"❌ **GitHub push failed:** {result.get('message', 'Unknown error')}")
-                        else:
-                            st.error(f"❌ **GitHub API Error:** HTTP {response.status_code}")
-                            if response.text:
-                                st.error(f"Response: {response.text}")
-                        
-                    except requests.exceptions.ConnectionError:
-                        st.error("❌ **Connection Error:** Could not reach GitHub service")
-                        st.info("💡 Make sure the backend service is running at http://localhost:5000")
-                    except requests.exceptions.Timeout:
-                        st.error("❌ **Timeout Error:** GitHub push took too long")
-                    except Exception as e:
-                        st.error(f"❌ **GitHub push failed:** {str(e)}")
-                        st.info("💡 Check your GitHub configuration and credentials")
+    # Display the JSON that will be pushed
+    st.write("**📋 Data to be pushed to GitHub:**")
+    with st.expander("📄 View JSON Data", expanded=False):
+        st.code(json.dumps(json_data, indent=2), language="json")
+    st.write(f"**📊 Data size:** {len(json.dumps(json_data))} characters")
     
-    else:
-        st.info("💡 **GitHub Push Disabled** - Check the box above to enable GitHub integration")
+    # Use the simple commit_json function from utils
+    st.text(commit_json(codebase, json_data))
 
 
 def display_error_logs():
