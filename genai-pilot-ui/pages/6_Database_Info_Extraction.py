@@ -184,11 +184,7 @@ def log_error(error_type, status_code, response_text, system_prompt, user_prompt
         "user_prompt": user_prompt,
         "codebase_snippet": codebase[:500] + "..." if len(codebase) > 500 else codebase,
         "full_codebase_length": len(codebase),
-        "payload_size": len(json.dumps({
-            "system_prompt": system_prompt,
-            "user_prompt": user_prompt,
-            "codebase": codebase
-        })),
+        "payload_size": len(system_prompt) + len(user_prompt) + len(codebase),
         "additional_info": additional_info or {},
         "error_severity": "HIGH" if status_code and status_code >= 500 else "MEDIUM" if status_code and status_code >= 400 else "LOW"
     }
