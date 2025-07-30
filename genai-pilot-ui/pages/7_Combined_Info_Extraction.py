@@ -781,9 +781,9 @@ def transform_actual_extracted_data(db_info_list, all_vector_results, system_pro
 
 
 def transform_with_workflow_approach(db_info_list, all_vector_results):
-    """Legacy workflow function - redirects to enhanced version"""
-    # This maintains backward compatibility while using the enhanced version
-    return enhanced_workflow_with_llm_visibility(db_info_list, all_vector_results, DEFAULT_DATABASE_SYSTEM_PROMPT)
+    """Legacy workflow function - redirects to use actual extracted data instead of dummy data"""
+    # This maintains backward compatibility while using the actual data approach
+    return transform_actual_extracted_data(db_info_list, all_vector_results, DEFAULT_DATABASE_SYSTEM_PROMPT)
 
 
 def commit_json_to_github(codebase, json_data):
@@ -1046,8 +1046,8 @@ def main():
                 if database_data and 'results' in database_data and len(database_data['results']) > 0:
                     database_information = extract_database_information_workflow(database_data, database_system_prompt, database_vector_query)
                     
-                    # Transform database information using enhanced workflow approach with LLM visibility
-                    transformed_database_data = enhanced_workflow_with_llm_visibility(database_information, database_data['results'], database_system_prompt)
+                    # Transform database information using ACTUAL extracted data (no dummy data)
+                    transformed_database_data = transform_actual_extracted_data(database_information, database_data['results'], database_system_prompt)
                     combined_results["Database Information"] = transformed_database_data
                     
                     st.success(f"✅ **Database extraction completed!** Found {len(database_information)} database entries")
