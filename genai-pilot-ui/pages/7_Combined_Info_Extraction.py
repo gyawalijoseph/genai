@@ -166,6 +166,73 @@ def log_error(error_type, status_code, response_text, system_prompt, user_prompt
     st.session_state['combined_error_logs'].append(log_entry)
 
 
+def display_llm_call_details(step_name, system_prompt, user_prompt, codebase, response_output, file_source, call_number):
+    """Display detailed LLM call information in expandable section"""
+    with st.expander(f"🔍 **LLM Call Details - {step_name}**", expanded=False):
+        st.write(f"**📂 File:** `{file_source}`")
+        st.write(f"**🔢 Call #:** {call_number}")
+        st.write(f"**⏰ Step:** {step_name}")
+        
+        # System Prompt
+        st.write("**🤖 System Prompt:**")
+        st.code(system_prompt, language="text")
+        st.write(f"**Length:** {len(system_prompt)} characters")
+        
+        # User Prompt  
+        st.write("**👤 User Prompt:**")
+        st.code(user_prompt, language="text")
+        st.write(f"**Length:** {len(user_prompt)} characters")
+        
+        # Codebase Content
+        st.write("**📄 Codebase Content:**")
+        if len(codebase) > 2000:
+            st.write(f"**⚠️ Large content ({len(codebase)} chars) - showing first 2000 characters:**")
+            st.code(codebase[:2000] + "\n\n... [TRUNCATED] ...", language="text")
+        else:
+            st.code(codebase, language="text")
+        st.write(f"**Length:** {len(codebase)} characters")
+        
+        # Response Output
+        st.write("**🔄 LLM Response:**")
+        if response_output:
+            if len(response_output) > 1000:
+                st.write(f"**⚠️ Large response ({len(response_output)} chars) - showing first 1000 characters:**")
+                st.code(response_output[:1000] + "\n\n... [TRUNCATED] ...", language="json")
+            else:
+                st.code(response_output, language="json")
+            st.write(f"**Length:** {len(response_output)} characters")
+        else:
+            st.write("*No response received*")
+        
+        # Analysis Helper
+        st.write("**🔍 Quick Analysis:**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("System Prompt", f"{len(system_prompt)} chars")
+        with col2:
+            st.metric("User Prompt", f"{len(user_prompt)} chars") 
+        with col3:
+            st.metric("Codebase", f"{len(codebase)} chars")
+        
+        # Potential Issues Detection
+        issues = []
+        if len(codebase) < 10:
+            issues.append("⚠️ Codebase content is very short")
+        if len(system_prompt) < 20:
+            issues.append("⚠️ System prompt is very short")
+        if response_output and ('no' in response_output.lower() or 'none' in response_output.lower()):
+            issues.append("ℹ️ LLM indicated no information found")
+        if response_output and len(response_output) > 5000:
+            issues.append("⚠️ Very long response - possible hallucination")
+        
+        if issues:
+            st.write("**🚨 Potential Issues:**")
+            for issue in issues:
+                st.write(f"• {issue}")
+        else:
+            st.success("✅ No obvious issues detected")
+
+
 def robust_json_parse(text_output, file_source="unknown"):
     """Robust JSON parsing with multiple fallback strategies"""
     if not text_output or not text_output.strip():
@@ -296,11 +363,15 @@ def extract_server_information(data, system_prompt, vector_query):
 
                     if response.status_code == 404:
                         st.error("❌ **404 Error: Request blocked by firewall**")
+                        # Show LLM call details even for failures
+                        display_llm_call_details("Server Detection (404 Error)", system_prompt, detection_prompt, codebase, "HTTP 404 Error", file_source, i)
                         log_404_error(system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                         continue
 
                     elif response.status_code != 200:
                         st.error(f"❌ **HTTP {response.status_code} Error:** {response.text}")
+                        # Show LLM call details for HTTP errors
+                        display_llm_call_details(f"Server Detection (HTTP {response.status_code})", system_prompt, detection_prompt, codebase, response.text, file_source, i)
                         log_error(f"http_{response.status_code}", response.status_code, response.text,
                                   system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                         continue
@@ -309,15 +380,19 @@ def extract_server_information(data, system_prompt, vector_query):
                         response_json = response.json()
                     except json.JSONDecodeError as e:
                         st.error(f"❌ **Invalid JSON Response:** Could not parse response")
+                        # Show LLM call details for JSON errors
+                        display_llm_call_details("Server Detection (JSON Parse Error)", system_prompt, detection_prompt, codebase, response.text, file_source, i)
                         continue
 
                     status_code = response_json.get('status_code', response.status_code)
+                    output = response_json.get('output', '')
+
+                    # Always show LLM call details for transparency
+                    display_llm_call_details("Server Detection", system_prompt, detection_prompt, codebase, output, file_source, i)
 
                     if status_code != 200:
                         st.warning(f"⚠️ **LLM API {status_code} - Filtered/Blocked:** {response_json.get('output', 'Unknown error')}")
                         continue
-
-                    output = response_json.get('output', '')
 
                     # Check if no server information found
                     output_stripped = output.strip().lower()
@@ -423,11 +498,15 @@ def extract_database_information_workflow(data, system_prompt, vector_query):
 
                     if response.status_code == 404:
                         st.error("❌ **404 Error: Request blocked by firewall**")
+                        # Show LLM call details even for failures
+                        display_llm_call_details("Database Detection (404 Error)", system_prompt, detection_prompt, codebase, "HTTP 404 Error", file_source, i)
                         log_404_error(system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                         continue
 
                     elif response.status_code != 200:
                         st.error(f"❌ **HTTP {response.status_code} Error:** {response.text}")
+                        # Show LLM call details for HTTP errors
+                        display_llm_call_details(f"Database Detection (HTTP {response.status_code})", system_prompt, detection_prompt, codebase, response.text, file_source, i)
                         log_error(f"http_{response.status_code}", response.status_code, response.text,
                                   system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                         continue
@@ -436,15 +515,19 @@ def extract_database_information_workflow(data, system_prompt, vector_query):
                         response_json = response.json()
                     except json.JSONDecodeError as e:
                         st.error(f"❌ **Invalid JSON Response:** Could not parse response")
+                        # Show LLM call details for JSON errors
+                        display_llm_call_details("Database Detection (JSON Parse Error)", system_prompt, detection_prompt, codebase, response.text, file_source, i)
                         continue
 
                     status_code = response_json.get('status_code', response.status_code)
+                    output = response_json.get('output', '')
+
+                    # Always show LLM call details for transparency
+                    display_llm_call_details("Database Detection", system_prompt, detection_prompt, codebase, output, file_source, i)
 
                     if status_code != 200:
                         st.warning(f"⚠️ **LLM API {status_code} - Filtered/Blocked:** {response_json.get('output', 'Unknown error')}")
                         continue
-
-                    output = response_json.get('output', '')
 
                     # Check if no database information found
                     output_stripped = output.strip().lower()
@@ -489,9 +572,9 @@ def extract_database_information_workflow(data, system_prompt, vector_query):
     return database_info_array
 
 
-def transform_with_workflow_approach(db_info_list, all_vector_results):
-    """Transform database information using structured workflows"""
-    st.write("🏗️ **Building final database structure using workflow approach...**")
+def enhanced_workflow_with_llm_visibility(db_info_list, all_vector_results, system_prompt):
+    """Enhanced workflow with detailed LLM call visibility for debugging hallucinations"""
+    st.write("🏗️ **Building final database structure with enhanced debugging...**")
     
     # Initialize the final structure
     final_output = {
@@ -501,11 +584,15 @@ def transform_with_workflow_approach(db_info_list, all_vector_results):
     }
     
     if not db_info_list:
+        st.warning("⚠️ **No database information to process**")
         return final_output
     
-    # Process each extracted database entry with structured workflows
+    st.info(f"**🔢 Processing {len(db_info_list)} extracted database entries**")
+    
+    # Process each extracted database entry with enhanced LLM calls
     for i, db_entry in enumerate(db_info_list):
         if not isinstance(db_entry, dict):
+            st.warning(f"⚠️ **Entry {i+1} is not a dictionary, skipping**")
             continue
         
         # Get source file information
@@ -520,41 +607,200 @@ def transform_with_workflow_approach(db_info_list, all_vector_results):
         if len(all_vector_results) > i:
             original_codebase = all_vector_results[i].get('page_content', '')
         
-        st.write(f"**📄 Processing workflow for:** `{source_file}`")
+        st.markdown(f"### 🔍 **Enhanced Analysis for:** `{source_file}`")
         
-        # Create basic table entry from extracted data
-        if db_entry:
-            table_entry = {source_file: {}}
+        # Show what we extracted vs original
+        with st.expander(f"📊 **Data Comparison - {source_file}**", expanded=False):
+            col1, col2 = st.columns(2)
             
-            # Look for table-related information in the extracted data
-            table_found = False
-            for key, value in db_entry.items():
-                if isinstance(value, str) and value.strip() and any(keyword in key.lower() for keyword in ['table', 'column', 'field', 'schema']):
-                    table_entry[source_file]["EXTRACTED_TABLE"] = {
-                        "Field Information": [{
-                            "column_name": key,
-                            "data_type": "extracted",
-                            "CRUD": "UNKNOWN"
-                        }]
-                    }
-                    table_found = True
-                    break
-            
-            if table_found:
-                final_output["Table Information"].append(table_entry)
-                st.success(f"✅ **Extracted table information from {source_file}**")
+            with col1:
+                st.write("**🔍 Originally Extracted JSON:**")
+                st.code(json.dumps(db_entry, indent=2), language="json")
+                st.write(f"**Keys found:** {list(db_entry.keys())}")
+                
+            with col2:
+                st.write("**📄 Original Code Content:**")
+                if original_codebase:
+                    if len(original_codebase) > 500:
+                        st.code(original_codebase[:500] + "\n... [TRUNCATED] ...", language="text")
+                    else:
+                        st.code(original_codebase, language="text")
+                    st.write(f"**Length:** {len(original_codebase)} characters")
+                else:
+                    st.write("*No original codebase available*")
         
-        # Look for SQL-like content
-        content = json.dumps(db_entry).lower()
-        sql_indicators = ['select', 'insert', 'update', 'delete', 'create', 'drop']
-        if any(indicator in content for indicator in sql_indicators):
-            # Extract potential SQL queries from the content
-            for key, value in db_entry.items():
-                if isinstance(value, str) and any(indicator in value.lower() for indicator in sql_indicators):
-                    final_output["SQL_QUERIES"].append(value)
-                    st.success(f"✅ **Found SQL query in {source_file}**")
+        # Enhanced table information extraction with LLM call visibility
+        if any(keyword in str(db_entry).lower() for keyword in ['table', 'column', 'field', 'schema', 'model']):
+            st.write("**🗃️ Step 1: Enhanced Table Information Extraction**")
+            
+            # Use LLM to get more detailed table information
+            url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            table_prompt = f"""Based on the extracted database information and original code, provide detailed table structure.
+
+EXTRACTED INFO: {json.dumps(db_entry)}
+
+Provide a JSON response with table names, column names, data types, and likely CRUD operations. Format:
+{{"table_name": {{"columns": [{{"name": "column_name", "type": "data_type", "crud": "READ,WRITE"}}]}}}}
+
+If no clear table structure can be determined, respond with 'no clear structure'."""
+
+            payload = {
+                "system_prompt": system_prompt,
+                "user_prompt": table_prompt,
+                "codebase": original_codebase if original_codebase else json.dumps(db_entry)
+            }
+            
+            try:
+                with st.spinner(f"🔄 Getting enhanced table info for {source_file}..."):
+                    response = requests.post(url, json=payload, headers=HEADERS, timeout=180)
+                
+                # Show LLM call details
+                response_output = ""
+                if response.status_code == 200:
+                    try:
+                        response_json = response.json()
+                        response_output = response_json.get('output', '')
+                        display_llm_call_details("Enhanced Table Extraction", system_prompt, table_prompt, 
+                                               original_codebase if original_codebase else json.dumps(db_entry), 
+                                               response_output, source_file, f"workflow_{i+1}")
+                        
+                        # Process the enhanced response
+                        if response_output and 'no clear structure' not in response_output.lower():
+                            enhanced_data, parse_error = robust_json_parse(response_output, source_file)
+                            if enhanced_data and isinstance(enhanced_data, dict):
+                                # Convert to our expected format
+                                table_entry = {source_file: {}}
+                                
+                                for table_name, table_info in enhanced_data.items():
+                                    if isinstance(table_info, dict) and 'columns' in table_info:
+                                        field_info = []
+                                        for col in table_info['columns']:
+                                            if isinstance(col, dict):
+                                                field_info.append({
+                                                    "column_name": col.get('name', 'unknown'),
+                                                    "data_type": col.get('type', 'unknown'),
+                                                    "CRUD": col.get('crud', 'UNKNOWN')
+                                                })
+                                        
+                                        if field_info:
+                                            table_entry[source_file][table_name] = {
+                                                "Field Information": field_info
+                                            }
+                                
+                                if table_entry[source_file]:
+                                    final_output["Table Information"].append(table_entry)
+                                    st.success(f"✅ **Enhanced table extraction successful for {source_file}**")
+                                    st.json(table_entry)
+                                else:
+                                    st.warning(f"⚠️ **No valid table structure found for {source_file}**")
+                            else:
+                                st.warning(f"⚠️ **Could not parse enhanced response for {source_file}**")
+                        else:
+                            st.info(f"ℹ️ **LLM indicated no clear table structure for {source_file}**")
+                    
+                    except Exception as e:
+                        st.error(f"❌ **Enhanced table extraction failed for {source_file}: {str(e)}**")
+                        display_llm_call_details("Enhanced Table Extraction (Error)", system_prompt, table_prompt, 
+                                               original_codebase if original_codebase else json.dumps(db_entry), 
+                                               f"Error: {str(e)}", source_file, f"workflow_{i+1}")
+                else:
+                    st.error(f"❌ **HTTP {response.status_code} Error for {source_file}**")
+                    display_llm_call_details(f"Enhanced Table Extraction (HTTP {response.status_code})", system_prompt, table_prompt, 
+                                           original_codebase if original_codebase else json.dumps(db_entry), 
+                                           response.text, source_file, f"workflow_{i+1}")
+                    
+            except Exception as e:
+                st.error(f"❌ **Enhanced table extraction request failed for {source_file}: {str(e)}**")
+        
+        # Enhanced SQL query extraction with LLM call visibility
+        st.write("**🔍 Step 2: Enhanced SQL Query Extraction**")
+        
+        sql_prompt = f"""Analyze the following database information and original code for SQL queries.
+
+EXTRACTED INFO: {json.dumps(db_entry)}
+
+Find and list any complete SQL queries. Separate valid queries from incomplete/invalid ones.
+Respond with JSON: {{"valid_queries": ["query1", "query2"], "invalid_queries": [{{"query": "incomplete", "reason": "missing FROM"}}]}}
+
+If no SQL queries found, respond with 'no sql queries'."""
+
+        payload = {
+            "system_prompt": system_prompt,
+            "user_prompt": sql_prompt,
+            "codebase": original_codebase if original_codebase else json.dumps(db_entry)
+        }
+        
+        try:
+            with st.spinner(f"🔄 Getting enhanced SQL info for {source_file}..."):
+                response = requests.post(url, json=payload, headers=HEADERS, timeout=180)
+            
+            response_output = ""
+            if response.status_code == 200:
+                try:
+                    response_json = response.json()
+                    response_output = response_json.get('output', '')
+                    display_llm_call_details("Enhanced SQL Extraction", system_prompt, sql_prompt, 
+                                           original_codebase if original_codebase else json.dumps(db_entry), 
+                                           response_output, source_file, f"sql_workflow_{i+1}")
+                    
+                    if response_output and 'no sql queries' not in response_output.lower():
+                        sql_data, parse_error = robust_json_parse(response_output, source_file)
+                        if sql_data and isinstance(sql_data, dict):
+                            # Process valid queries
+                            valid_queries = sql_data.get('valid_queries', [])
+                            if valid_queries:
+                                final_output["SQL_QUERIES"].extend(valid_queries)
+                                st.success(f"✅ **Found {len(valid_queries)} valid SQL query(ies) in {source_file}**")
+                                for query in valid_queries:
+                                    st.code(query, language="sql")
+                            
+                            # Process invalid queries
+                            invalid_queries = sql_data.get('invalid_queries', [])
+                            if invalid_queries:
+                                for invalid in invalid_queries:
+                                    if isinstance(invalid, dict):
+                                        final_output["Invalid_SQL_Queries"].append({
+                                            "source_file": source_file,
+                                            "query": invalid.get('query', ''),
+                                            "reason": invalid.get('reason', 'Unknown reason')
+                                        })
+                                st.warning(f"⚠️ **Found {len(invalid_queries)} invalid SQL query(ies) in {source_file}**")
+                        else:
+                            st.warning(f"⚠️ **Could not parse SQL response for {source_file}**")
+                    else:
+                        st.info(f"ℹ️ **No SQL queries found in {source_file}**")
+                        
+                except Exception as e:
+                    st.error(f"❌ **SQL extraction failed for {source_file}: {str(e)}**")
+            else:
+                st.error(f"❌ **HTTP {response.status_code} Error for {source_file}**")
+                display_llm_call_details(f"Enhanced SQL Extraction (HTTP {response.status_code})", system_prompt, sql_prompt, 
+                                       original_codebase if original_codebase else json.dumps(db_entry), 
+                                       response.text, source_file, f"sql_workflow_{i+1}")
+                
+        except Exception as e:
+            st.error(f"❌ **SQL extraction request failed for {source_file}: {str(e)}**")
+    
+    # Summary of what was processed
+    st.markdown("---")
+    st.write("**📊 Final Processing Summary:**")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Tables Found", len(final_output["Table Information"]))
+    with col2:
+        st.metric("Valid SQL Queries", len(final_output["SQL_QUERIES"]))
+    with col3:
+        st.metric("Invalid SQL Queries", len(final_output["Invalid_SQL_Queries"]))
     
     return final_output
+
+
+def transform_with_workflow_approach(db_info_list, all_vector_results):
+    """Legacy workflow function - redirects to enhanced version"""
+    # This maintains backward compatibility while using the enhanced version
+    return enhanced_workflow_with_llm_visibility(db_info_list, all_vector_results, DEFAULT_DATABASE_SYSTEM_PROMPT)
 
 
 def commit_json_to_github(codebase, json_data):
@@ -817,8 +1063,8 @@ def main():
                 if database_data and 'results' in database_data and len(database_data['results']) > 0:
                     database_information = extract_database_information_workflow(database_data, database_system_prompt, database_vector_query)
                     
-                    # Transform database information using workflow approach
-                    transformed_database_data = transform_with_workflow_approach(database_information, database_data['results'])
+                    # Transform database information using enhanced workflow approach with LLM visibility
+                    transformed_database_data = enhanced_workflow_with_llm_visibility(database_information, database_data['results'], database_system_prompt)
                     combined_results["Database Information"] = transformed_database_data
                     
                     st.success(f"✅ **Database extraction completed!** Found {len(database_information)} database entries")
