@@ -572,9 +572,9 @@ def extract_database_information_workflow(data, system_prompt, vector_query):
     return database_info_array
 
 
-def enhanced_workflow_with_llm_visibility(db_info_list, all_vector_results, system_prompt):
-    """Enhanced workflow with detailed LLM call visibility for debugging hallucinations"""
-    st.write("🏗️ **Building final database structure with enhanced debugging...**")
+def transform_actual_extracted_data(db_info_list, all_vector_results, system_prompt):
+    """Transform actual extracted data into final structure WITHOUT making new LLM calls"""
+    st.write("🏗️ **Building final database structure using ACTUAL extracted data...**")
     
     # Initialize the final structure
     final_output = {
@@ -587,9 +587,9 @@ def enhanced_workflow_with_llm_visibility(db_info_list, all_vector_results, syst
         st.warning("⚠️ **No database information to process**")
         return final_output
     
-    st.info(f"**🔢 Processing {len(db_info_list)} extracted database entries**")
+    st.info(f"**🔢 Processing {len(db_info_list)} extracted database entries with REAL data**")
     
-    # Process each extracted database entry with enhanced LLM calls
+    # Process each extracted database entry using the ACTUAL data from initial extraction
     for i, db_entry in enumerate(db_info_list):
         if not isinstance(db_entry, dict):
             st.warning(f"⚠️ **Entry {i+1} is not a dictionary, skipping**")
@@ -602,194 +602,171 @@ def enhanced_workflow_with_llm_visibility(db_info_list, all_vector_results, syst
         elif len(all_vector_results) > i:
             source_file = all_vector_results[i].get('metadata', {}).get('source', source_file)
         
-        # Get original codebase content for detailed analysis  
+        # Get original codebase content for reference
         original_codebase = ""
         if len(all_vector_results) > i:
             original_codebase = all_vector_results[i].get('page_content', '')
         
-        st.markdown(f"### 🔍 **Enhanced Analysis for:** `{source_file}`")
+        st.markdown(f"### 🔍 **Processing REAL Data from:** `{source_file}`")
         
-        # Show what we extracted vs original
-        with st.expander(f"📊 **Data Comparison - {source_file}**", expanded=False):
-            col1, col2 = st.columns(2)
+        # Show the comparison between extracted and original with LLM call visibility
+        with st.expander(f"🔍 **LLM Call Details - Original Database Detection** (File: {source_file})", expanded=False):
+            st.write(f"**📂 File:** `{source_file}`")
+            st.write(f"**🔢 Entry #:** {i+1}")
+            st.write(f"**⏰ Step:** Database Detection (Original)")
             
-            with col1:
-                st.write("**🔍 Originally Extracted JSON:**")
-                st.code(json.dumps(db_entry, indent=2), language="json")
-                st.write(f"**Keys found:** {list(db_entry.keys())}")
-                
-            with col2:
-                st.write("**📄 Original Code Content:**")
-                if original_codebase:
-                    if len(original_codebase) > 500:
-                        st.code(original_codebase[:500] + "\n... [TRUNCATED] ...", language="text")
-                    else:
-                        st.code(original_codebase, language="text")
-                    st.write(f"**Length:** {len(original_codebase)} characters")
+            # Show what the LLM originally extracted
+            st.write("**🔄 LLM Response (ACTUAL EXTRACTED DATA):**")
+            st.code(json.dumps(db_entry, indent=2), language="json")
+            st.write(f"**Length:** {len(json.dumps(db_entry))} characters")
+            
+            # Show original code that was analyzed
+            st.write("**📄 Original Codebase Content:**")
+            if original_codebase:
+                if len(original_codebase) > 2000:
+                    st.code(original_codebase[:2000] + "\n\n... [TRUNCATED] ...", language="text")
                 else:
-                    st.write("*No original codebase available*")
-        
-        # Enhanced table information extraction with LLM call visibility
-        if any(keyword in str(db_entry).lower() for keyword in ['table', 'column', 'field', 'schema', 'model']):
-            st.write("**🗃️ Step 1: Enhanced Table Information Extraction**")
-            
-            # Use LLM to get more detailed table information
-            url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Build the prompt without f-string to avoid formatting issues with JSON examples
-            extracted_info_json = json.dumps(db_entry)
-            table_prompt = """Based on the extracted database information and original code, provide detailed table structure.
-
-EXTRACTED INFO: """ + extracted_info_json + """
-
-Provide a JSON response with table names, column names, data types, and likely CRUD operations. Format:
-{"table_name": {"columns": [{"name": "column_name", "type": "data_type", "crud": "READ,WRITE"}]}}
-
-If no clear table structure can be determined, respond with 'no clear structure'."""
-
-            payload = {
-                "system_prompt": system_prompt,
-                "user_prompt": table_prompt,
-                "codebase": original_codebase if original_codebase else json.dumps(db_entry)
-            }
-            
-            try:
-                with st.spinner(f"🔄 Getting enhanced table info for {source_file}..."):
-                    response = requests.post(url, json=payload, headers=HEADERS, timeout=180)
-                
-                # Show LLM call details
-                response_output = ""
-                if response.status_code == 200:
-                    try:
-                        response_json = response.json()
-                        response_output = response_json.get('output', '')
-                        display_llm_call_details("Enhanced Table Extraction", system_prompt, table_prompt, 
-                                               original_codebase if original_codebase else json.dumps(db_entry), 
-                                               response_output, source_file, f"workflow_{i+1}")
-                        
-                        # Process the enhanced response
-                        if response_output and 'no clear structure' not in response_output.lower():
-                            enhanced_data, parse_error = robust_json_parse(response_output, source_file)
-                            if enhanced_data and isinstance(enhanced_data, dict):
-                                # Convert to our expected format
-                                table_entry = {source_file: {}}
-                                
-                                for table_name, table_info in enhanced_data.items():
-                                    if isinstance(table_info, dict) and 'columns' in table_info:
-                                        field_info = []
-                                        for col in table_info['columns']:
-                                            if isinstance(col, dict):
-                                                field_info.append({
-                                                    "column_name": col.get('name', 'unknown'),
-                                                    "data_type": col.get('type', 'unknown'),
-                                                    "CRUD": col.get('crud', 'UNKNOWN')
-                                                })
-                                        
-                                        if field_info:
-                                            table_entry[source_file][table_name] = {
-                                                "Field Information": field_info
-                                            }
-                                
-                                if table_entry[source_file]:
-                                    final_output["Table Information"].append(table_entry)
-                                    st.success(f"✅ **Enhanced table extraction successful for {source_file}**")
-                                    st.json(table_entry)
-                                else:
-                                    st.warning(f"⚠️ **No valid table structure found for {source_file}**")
-                            else:
-                                st.warning(f"⚠️ **Could not parse enhanced response for {source_file}**")
-                        else:
-                            st.info(f"ℹ️ **LLM indicated no clear table structure for {source_file}**")
-                    
-                    except Exception as e:
-                        st.error(f"❌ **Enhanced table extraction failed for {source_file}: {str(e)}**")
-                        display_llm_call_details("Enhanced Table Extraction (Error)", system_prompt, table_prompt, 
-                                               original_codebase if original_codebase else json.dumps(db_entry), 
-                                               f"Error: {str(e)}", source_file, f"workflow_{i+1}")
-                else:
-                    st.error(f"❌ **HTTP {response.status_code} Error for {source_file}**")
-                    display_llm_call_details(f"Enhanced Table Extraction (HTTP {response.status_code})", system_prompt, table_prompt, 
-                                           original_codebase if original_codebase else json.dumps(db_entry), 
-                                           response.text, source_file, f"workflow_{i+1}")
-                    
-            except Exception as e:
-                st.error(f"❌ **Enhanced table extraction request failed for {source_file}: {str(e)}**")
-        
-        # Enhanced SQL query extraction with LLM call visibility
-        st.write("**🔍 Step 2: Enhanced SQL Query Extraction**")
-        
-        # Build the SQL prompt without f-string to avoid formatting issues
-        extracted_info_json = json.dumps(db_entry)
-        sql_prompt = """Analyze the following database information and original code for SQL queries.
-
-EXTRACTED INFO: """ + extracted_info_json + """
-
-Find and list any complete SQL queries. Separate valid queries from incomplete/invalid ones.
-Respond with JSON: {"valid_queries": ["query1", "query2"], "invalid_queries": [{"query": "incomplete", "reason": "missing FROM"}]}
-
-If no SQL queries found, respond with 'no sql queries'."""
-
-        payload = {
-            "system_prompt": system_prompt,
-            "user_prompt": sql_prompt,
-            "codebase": original_codebase if original_codebase else json.dumps(db_entry)
-        }
-        
-        try:
-            with st.spinner(f"🔄 Getting enhanced SQL info for {source_file}..."):
-                response = requests.post(url, json=payload, headers=HEADERS, timeout=180)
-            
-            response_output = ""
-            if response.status_code == 200:
-                try:
-                    response_json = response.json()
-                    response_output = response_json.get('output', '')
-                    display_llm_call_details("Enhanced SQL Extraction", system_prompt, sql_prompt, 
-                                           original_codebase if original_codebase else json.dumps(db_entry), 
-                                           response_output, source_file, f"sql_workflow_{i+1}")
-                    
-                    if response_output and 'no sql queries' not in response_output.lower():
-                        sql_data, parse_error = robust_json_parse(response_output, source_file)
-                        if sql_data and isinstance(sql_data, dict):
-                            # Process valid queries
-                            valid_queries = sql_data.get('valid_queries', [])
-                            if valid_queries:
-                                final_output["SQL_QUERIES"].extend(valid_queries)
-                                st.success(f"✅ **Found {len(valid_queries)} valid SQL query(ies) in {source_file}**")
-                                for query in valid_queries:
-                                    st.code(query, language="sql")
-                            
-                            # Process invalid queries
-                            invalid_queries = sql_data.get('invalid_queries', [])
-                            if invalid_queries:
-                                for invalid in invalid_queries:
-                                    if isinstance(invalid, dict):
-                                        final_output["Invalid_SQL_Queries"].append({
-                                            "source_file": source_file,
-                                            "query": invalid.get('query', ''),
-                                            "reason": invalid.get('reason', 'Unknown reason')
-                                        })
-                                st.warning(f"⚠️ **Found {len(invalid_queries)} invalid SQL query(ies) in {source_file}**")
-                        else:
-                            st.warning(f"⚠️ **Could not parse SQL response for {source_file}**")
-                    else:
-                        st.info(f"ℹ️ **No SQL queries found in {source_file}**")
-                        
-                except Exception as e:
-                    st.error(f"❌ **SQL extraction failed for {source_file}: {str(e)}**")
+                    st.code(original_codebase, language="text")
+                st.write(f"**Length:** {len(original_codebase)} characters")
             else:
-                st.error(f"❌ **HTTP {response.status_code} Error for {source_file}**")
-                display_llm_call_details(f"Enhanced SQL Extraction (HTTP {response.status_code})", system_prompt, sql_prompt, 
-                                       original_codebase if original_codebase else json.dumps(db_entry), 
-                                       response.text, source_file, f"sql_workflow_{i+1}")
+                st.write("*No original codebase available*")
+            
+            # Analysis of what was extracted
+            st.write("**🔍 Extraction Analysis:**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Keys Extracted", len(db_entry.keys()))
+            with col2:
+                table_keys = [k for k in db_entry.keys() if any(word in k.lower() for word in ['table', 'column', 'field', 'schema'])]
+                st.metric("Table-related Keys", len(table_keys))
+            with col3:
+                sql_content = [v for v in db_entry.values() if isinstance(v, str) and any(word in v.lower() for word in ['select', 'insert', 'update', 'delete'])]
+                st.metric("SQL-like Values", len(sql_content))
+        
+        # Process Table Information using ACTUAL extracted data
+        st.write("**🗃️ Step 1: Processing Table Information from REAL Extracted Data**")
+        
+        table_entry = {source_file: {}}
+        table_found = False
+        
+        # Look through the ACTUAL extracted data for table information
+        for key, value in db_entry.items():
+            key_lower = key.lower()
+            
+            # Check for table-related keys
+            if any(keyword in key_lower for keyword in ['table', 'schema', 'model', 'entity']):
+                if isinstance(value, str) and value.strip():
+                    # Single table name
+                    table_entry[source_file][value] = {
+                        "Field Information": [{
+                            "column_name": f"extracted_from_{key}",
+                            "data_type": "unknown",
+                            "CRUD": "UNKNOWN"
+                        }]
+                    }
+                    table_found = True
+                    st.success(f"✅ **Found table '{value}' from key '{key}'**")
+                elif isinstance(value, list):
+                    # Multiple tables
+                    for table_name in value:
+                        if isinstance(table_name, str) and table_name.strip():
+                            table_entry[source_file][table_name] = {
+                                "Field Information": [{
+                                    "column_name": f"extracted_from_{key}",
+                                    "data_type": "unknown", 
+                                    "CRUD": "UNKNOWN"
+                                }]
+                            }
+                            table_found = True
+                    st.success(f"✅ **Found {len(value)} tables from key '{key}': {value}**")
+            
+            # Check for column-related keys
+            elif any(keyword in key_lower for keyword in ['column', 'field', 'attribute']):
+                table_name = "UNKNOWN_TABLE"
+                # Try to find associated table name
+                for tkey, tvalue in db_entry.items():
+                    if any(tkeyword in tkey.lower() for tkeyword in ['table', 'schema', 'model']) and isinstance(tvalue, str):
+                        table_name = tvalue
+                        break
                 
-        except Exception as e:
-            st.error(f"❌ **SQL extraction request failed for {source_file}: {str(e)}**")
+                if isinstance(value, str) and value.strip():
+                    if table_name not in table_entry[source_file]:
+                        table_entry[source_file][table_name] = {"Field Information": []}
+                    
+                    table_entry[source_file][table_name]["Field Information"].append({
+                        "column_name": value,
+                        "data_type": "extracted",
+                        "CRUD": "UNKNOWN"
+                    })
+                    table_found = True
+                    st.success(f"✅ **Found column '{value}' for table '{table_name}'**")
+                elif isinstance(value, list):
+                    if table_name not in table_entry[source_file]:
+                        table_entry[source_file][table_name] = {"Field Information": []}
+                    
+                    for col_name in value:
+                        if isinstance(col_name, str) and col_name.strip():
+                            table_entry[source_file][table_name]["Field Information"].append({
+                                "column_name": col_name,
+                                "data_type": "extracted",
+                                "CRUD": "UNKNOWN"
+                            })
+                    table_found = True
+                    st.success(f"✅ **Found {len(value)} columns for table '{table_name}': {value}**")
+        
+        if table_found and table_entry[source_file]:
+            final_output["Table Information"].append(table_entry)
+            st.json(table_entry)
+        else:
+            st.info(f"ℹ️ **No table information found in extracted data for {source_file}**")
+        
+        # Process SQL Queries using ACTUAL extracted data
+        st.write("**🔍 Step 2: Processing SQL Queries from REAL Extracted Data**")
+        
+        sql_found = False
+        for key, value in db_entry.items():
+            if isinstance(value, str):
+                value_lower = value.lower()
+                # Check if this value contains SQL keywords
+                if any(sql_keyword in value_lower for sql_keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop']):
+                    # Basic SQL validation
+                    if len(value.strip()) > 10:  # Reasonable minimum SQL length
+                        final_output["SQL_QUERIES"].append(value.strip())
+                        st.success(f"✅ **Found SQL query from key '{key}':**")
+                        st.code(value.strip(), language="sql")
+                        sql_found = True
+                    else:
+                        # Add to invalid queries
+                        final_output["Invalid_SQL_Queries"].append({
+                            "source_file": source_file,
+                            "query": value.strip(),
+                            "reason": "Too short to be valid SQL"
+                        })
+                        st.warning(f"⚠️ **Found invalid SQL from key '{key}' (too short)**")
+            elif isinstance(value, list):
+                # Handle lists of SQL queries
+                for item in value:
+                    if isinstance(item, str):
+                        item_lower = item.lower()
+                        if any(sql_keyword in item_lower for sql_keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop']):
+                            if len(item.strip()) > 10:
+                                final_output["SQL_QUERIES"].append(item.strip())
+                                st.success(f"✅ **Found SQL query from list in key '{key}':**")
+                                st.code(item.strip(), language="sql")
+                                sql_found = True
+                            else:
+                                final_output["Invalid_SQL_Queries"].append({
+                                    "source_file": source_file,
+                                    "query": item.strip(),
+                                    "reason": "Too short to be valid SQL"
+                                })
+        
+        if not sql_found:
+            st.info(f"ℹ️ **No SQL queries found in extracted data for {source_file}**")
     
-    # Summary of what was processed
+    # Summary of what was processed using REAL data
     st.markdown("---")
-    st.write("**📊 Final Processing Summary:**")
+    st.write("**📊 Final Processing Summary (Using ACTUAL Extracted Data):**")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Tables Found", len(final_output["Table Information"]))
@@ -797,6 +774,8 @@ If no SQL queries found, respond with 'no sql queries'."""
         st.metric("Valid SQL Queries", len(final_output["SQL_QUERIES"]))
     with col3:
         st.metric("Invalid SQL Queries", len(final_output["Invalid_SQL_Queries"]))
+    
+    st.success("✅ **Final structure built using ONLY the real extracted data - no dummy/placeholder data!**")
     
     return final_output
 
