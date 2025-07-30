@@ -1017,41 +1017,21 @@ def main():
                             
                             return False
                         
-                        def _add_fallback_table_info(db_entry, source_file, transformed_output):
-                            """Add fallback table information when detailed analysis fails"""
-                            table_entry = {source_file: {}}
-                            found_content = False
-                            
-                            # Look for basic database-related information
-                            db_keywords = ['table', 'column', 'field', 'database', 'schema']
-                            
-                            for key, value in db_entry.items():
-                                key_lower = str(key).lower()
-                                if any(keyword in key_lower for keyword in db_keywords):
-                                    if isinstance(value, str) and value.strip():
-                                        table_entry[source_file]["FALLBACK_TABLE"] = {
-                                            "Field Information": [{
-                                                "column_name": key,
-                                                "data_type": "extracted",
-                                                "CRUD": "UNKNOWN"
-                                            }]
-                                        }
-                                        found_content = True
-                                        break
-                            
-                            if found_content:
-                                transformed_output["Table Information"].append(table_entry)
                         
-                        def transform_to_new_format(db_info_list):
-                            """Transform database information to the exact requested format"""
-                            transformed_output = {
-                                "Table Information": [],
-                                "SQL_QUERIES": [],
-                                "Invalid_SQL_Queries": []
-                            }
-                            
+                        def transform_to_new_format_with_llm(db_info_list):
+                            """Transform database information using LLM to generate final structured output"""
                             if not db_info_list:
-                                return transformed_output
+                                return {
+                                    "Table Information": [],
+                                    "SQL_QUERIES": [],
+                                    "Invalid_SQL_Queries": []
+                                }
+                            
+                            # Prepare all extracted database information for LLM processing
+                            consolidated_data = {
+                                "extracted_database_info": [],
+                                "source_files": []
+                            }
                             
                             for i, db_entry in enumerate(db_info_list):
                                 if not isinstance(db_entry, dict):
@@ -1060,94 +1040,167 @@ def main():
                                 # Filter out non-database related information
                                 if not is_database_related(db_entry):
                                     continue
-                                    
-                                # Determine source file name
+                                
+                                # Get source file information
                                 source_file = f"extracted_data_{i+1}.unknown"
                                 if 'source_file' in db_entry:
                                     source_file = db_entry['source_file']
                                 elif len(data.get('results', [])) > i:
                                     source_file = data['results'][i].get('metadata', {}).get('source', source_file)
                                 
-                                # If it already has the new format, merge it
-                                if "Table Information" in db_entry:
-                                    transformed_output["Table Information"].extend(db_entry.get("Table Information", []))
-                                    transformed_output["SQL_QUERIES"].extend(db_entry.get("SQL_QUERIES", []))
-                                    transformed_output["Invalid_SQL_Queries"].extend(db_entry.get("Invalid_SQL_Queries", []))
-                                else:
-                                    # Get the original codebase for detailed analysis
-                                    original_codebase = ""
-                                    if len(data.get('results', [])) > i:
-                                        original_codebase = data['results'][i].get('page_content', '')
-                                    
-                                    # Use LLM to extract detailed database information
-                                    if original_codebase:
-                                        st.write(f"⚙️ **Performing detailed analysis for {source_file}...**")
-                                        detailed_info = extract_detailed_database_info(original_codebase, system_prompt, source_file)
-                                        
-                                        if detailed_info and isinstance(detailed_info, dict):
-                                            # Process detailed table information
-                                            tables_data = detailed_info.get('tables', {})
-                                            if tables_data:
-                                                table_entry = {source_file: {}}
-                                                
-                                                for table_name, table_info in tables_data.items():
-                                                    columns_data = table_info.get('columns', [])
-                                                    field_information = []
-                                                    
-                                                    for column in columns_data:
-                                                        if isinstance(column, dict):
-                                                            field_info = {
-                                                                "column_name": column.get('name', 'unknown'),
-                                                                "data_type": column.get('type', 'unknown'),
-                                                                "CRUD": ", ".join(column.get('crud_operations', ['UNKNOWN']))
-                                                            }
-                                                            field_information.append(field_info)
-                                                    
-                                                    if field_information:
-                                                        table_entry[source_file][table_name] = {
-                                                            "Field Information": field_information
-                                                        }
-                                                
-                                                if table_entry[source_file]:
-                                                    transformed_output["Table Information"].append(table_entry)
-                                            
-                                            # Process SQL queries with validation
-                                            sql_queries = detailed_info.get('sql_queries', [])
-                                            for query in sql_queries:
-                                                if isinstance(query, str) and query.strip():
-                                                    is_valid, reason = validate_and_categorize_sql(query, source_file)
-                                                    if is_valid:
-                                                        transformed_output["SQL_QUERIES"].append(query.strip())
-                                                    else:
-                                                        transformed_output["Invalid_SQL_Queries"].append({
-                                                            "source_file": source_file,
-                                                            "query": query.strip(),
-                                                            "reason": reason
-                                                        })
-                                            
-                                            # Process invalid SQL queries
-                                            invalid_sql = detailed_info.get('invalid_sql', [])
-                                            for query in invalid_sql:
-                                                if isinstance(query, str) and query.strip():
-                                                    transformed_output["Invalid_SQL_Queries"].append({
-                                                        "source_file": source_file,
-                                                        "query": query.strip(),
-                                                        "reason": "Identified as invalid by LLM"
-                                                    })
-                                        else:
-                                            st.warning(f"⚠️ **Could not extract detailed info from {source_file}, using fallback**")
-                                            # Fallback to basic extraction
-                                            _add_fallback_table_info(db_entry, source_file, transformed_output)
-                                    else:
-                                        # Fallback if no original codebase available
-                                        _add_fallback_table_info(db_entry, source_file, transformed_output)
-                                    
-                                    # SQL query processing is now handled in the detailed analysis above
+                                # Get original codebase content
+                                original_codebase = ""
+                                if len(data.get('results', [])) > i:
+                                    original_codebase = data['results'][i].get('page_content', '')
+                                
+                                consolidated_data["extracted_database_info"].append({
+                                    "source_file": source_file,
+                                    "extracted_info": db_entry,
+                                    "original_code": original_codebase[:2000] + "..." if len(original_codebase) > 2000 else original_codebase
+                                })
+                                consolidated_data["source_files"].append(source_file)
                             
-                            return transformed_output
+                            if not consolidated_data["extracted_database_info"]:
+                                return {
+                                    "Table Information": [],
+                                    "SQL_QUERIES": [],
+                                    "Invalid_SQL_Queries": []
+                                }
+                            
+                            # Use LLM to generate the final structured output
+                            st.write("🤖 **Using LLM to generate final structured database information...**")
+                            
+                            final_structure_prompt = f"""Based on the following extracted database information from {len(consolidated_data['extracted_database_info'])} files, create a comprehensive final JSON structure.
+
+EXTRACTED DATA:
+{json.dumps(consolidated_data, indent=2)}
+
+Please analyze all the extracted database information and create a final JSON structure in this EXACT format:
+
+{{
+  "Table Information": [
+    {{
+      "source_file_name": {{
+        "table_name": {{
+          "Field Information": [
+            {{
+              "column_name": "actual_column_name",
+              "data_type": "varchar/int/boolean/etc",
+              "CRUD": "READ, WRITE, UPDATE, DELETE"
+            }}
+          ]
+        }}
+      }}
+    }}
+  ],
+  "SQL_QUERIES": ["SELECT * FROM table1", "INSERT INTO table2 VALUES (...)"],
+  "Invalid_SQL_Queries": [
+    {{
+      "source_file": "file.py",
+      "query": "incomplete sql",
+      "reason": "missing FROM clause"
+    }}
+  ]
+}}
+
+REQUIREMENTS:
+1. Use the actual table names, column names, and data types found in the extracted information
+2. For CRUD operations, analyze the code context to determine which operations are performed
+3. Include all valid SQL queries found in the code
+4. Categorize malformed or incomplete SQL queries as Invalid_SQL_Queries
+5. Use actual source file names from the extraction
+6. Ensure all data is properly populated from the extracted information
+7. Do not use placeholder values - use the actual extracted data
+
+Return ONLY the JSON structure, no additional text."""
+
+                            url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            payload = {
+                                "system_prompt": system_prompt,
+                                "user_prompt": final_structure_prompt,
+                                "codebase": json.dumps(consolidated_data, indent=2)
+                            }
+                            
+                            try:
+                                with st.spinner("🔄 Generating final structured output..."):
+                                    response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
+                                
+                                if response.status_code != 200:
+                                    st.warning(f"⚠️ **LLM final structuring failed:** HTTP {response.status_code}")
+                                    st.info("🔄 **Falling back to basic structure generation...**")
+                                    return _generate_fallback_structure(consolidated_data)
+                                
+                                response_json = response.json()
+                                status_code = response_json.get('status_code', response.status_code)
+                                
+                                if status_code != 200:
+                                    st.warning(f"⚠️ **LLM final structuring blocked:** {status_code}")
+                                    st.info("🔄 **Falling back to basic structure generation...**")
+                                    return _generate_fallback_structure(consolidated_data)
+                                
+                                output = response_json.get('output', '')
+                                
+                                # Parse the LLM-generated final structure
+                                final_structure, parse_error = robust_json_parse(output, "final_structure")
+                                
+                                if final_structure and isinstance(final_structure, dict):
+                                    # Validate the structure has required keys
+                                    required_keys = ["Table Information", "SQL_QUERIES", "Invalid_SQL_Queries"]
+                                    if all(key in final_structure for key in required_keys):
+                                        st.success("✅ **Final structure generated successfully by LLM!**")
+                                        return final_structure
+                                    else:
+                                        st.warning("⚠️ **LLM output missing required keys, using fallback**")
+                                        return _generate_fallback_structure(consolidated_data)
+                                else:
+                                    st.warning(f"⚠️ **Could not parse LLM final structure:** {parse_error}")
+                                    st.info("🔄 **Falling back to basic structure generation...**")
+                                    return _generate_fallback_structure(consolidated_data)
+                                
+                            except Exception as e:
+                                st.warning(f"⚠️ **Error in LLM final structuring:** {str(e)}")
+                                st.info("🔄 **Falling back to basic structure generation...**")
+                                return _generate_fallback_structure(consolidated_data)
                         
-                        # Apply the transformation
-                        transformed_data = transform_to_new_format(database_information)
+                        def _generate_fallback_structure(consolidated_data):
+                            """Generate basic fallback structure when LLM processing fails"""
+                            fallback_output = {
+                                "Table Information": [],
+                                "SQL_QUERIES": [],
+                                "Invalid_SQL_Queries": []
+                            }
+                            
+                            for item in consolidated_data["extracted_database_info"]:
+                                source_file = item["source_file"]
+                                extracted_info = item["extracted_info"]
+                                
+                                # Create basic table entry
+                                table_entry = {source_file: {}}
+                                found_table_info = False
+                                
+                                # Look for database-related information
+                                for key, value in extracted_info.items():
+                                    if isinstance(value, str) and value.strip():
+                                        if any(keyword in key.lower() for keyword in ['table', 'column', 'field', 'database']):
+                                            table_entry[source_file]["EXTRACTED_TABLE"] = {
+                                                "Field Information": [{
+                                                    "column_name": key,
+                                                    "data_type": "extracted",
+                                                    "CRUD": "UNKNOWN"
+                                                }]
+                                            }
+                                            found_table_info = True
+                                            break
+                                
+                                if found_table_info:
+                                    fallback_output["Table Information"].append(table_entry)
+                            
+                            return fallback_output
+                        
+                        # Apply the transformation using LLM
+                        transformed_data = transform_to_new_format_with_llm(database_information)
                         
                         # Format output in the exact requested structure
                         final_output = {
