@@ -574,6 +574,209 @@ def extract_database_information_workflow(data, system_prompt, vector_query):
     return database_info_array
 
 
+def validate_sql_basic(query):
+    """Basic SQL validation to check if query looks complete"""
+    query_lower = query.lower().strip()
+    
+    # Check for basic SQL structure
+    if query_lower.startswith('select'):
+        return 'from' in query_lower
+    elif query_lower.startswith('insert'):
+        return 'into' in query_lower and ('values' in query_lower or 'select' in query_lower)
+    elif query_lower.startswith('update'):
+        return 'set' in query_lower
+    elif query_lower.startswith('delete'):
+        return 'from' in query_lower
+    elif query_lower.startswith(('create', 'drop', 'alter')):
+        return len(query_lower) > 15  # DDL statements should be reasonably long
+    
+    return False
+
+
+def extract_sql_from_codebase(codebase):
+    """Extract SQL queries from original codebase using pattern matching"""
+    queries = []
+    
+    # SQL patterns - look for multiline SQL statements
+    sql_patterns = [
+        r'(?i)(SELECT\s+[\s\S]*?FROM\s+[\s\S]*?)(?=[;\n]\s*[A-Z]|\n\s*\n|$)',
+        r'(?i)(INSERT\s+INTO\s+[\s\S]*?VALUES\s*\([^)]*\))',
+        r'(?i)(UPDATE\s+[\s\S]*?SET\s+[\s\S]*?)(?=[;\n]\s*[A-Z]|\n\s*\n|$)',
+        r'(?i)(DELETE\s+FROM\s+[\s\S]*?)(?=[;\n]\s*[A-Z]|\n\s*\n|$)',
+        r'(?i)(CREATE\s+TABLE\s+[\s\S]*?)(?=[;\n]\s*[A-Z]|\n\s*\n|$)',
+    ]
+    
+    for pattern in sql_patterns:
+        matches = re.findall(pattern, codebase, re.MULTILINE | re.DOTALL)
+        for match in matches:
+            cleaned = re.sub(r'\s+', ' ', match.strip())  # Normalize whitespace
+            if len(cleaned) > 15 and validate_sql_basic(cleaned):
+                queries.append(cleaned)
+    
+    return queries
+
+
+def infer_data_type(key, value, original_codebase):
+    """Infer data type from key name, value, and codebase context"""
+    key_lower = key.lower()
+    value_str = str(value).lower()
+    
+    # Check for explicit type mentions in the key or value
+    type_indicators = {
+        'string': ['name', 'title', 'description', 'text', 'varchar', 'char'],
+        'integer': ['id', 'count', 'number', 'int', 'age', 'year'],
+        'boolean': ['is_', 'has_', 'active', 'enabled', 'bool'],
+        'datetime': ['date', 'time', 'created', 'updated', 'timestamp'],
+        'decimal': ['price', 'amount', 'rate', 'decimal', 'float'],
+        'json': ['config', 'settings', 'data', 'json']
+    }
+    
+    for data_type, indicators in type_indicators.items():
+        if any(indicator in key_lower for indicator in indicators):
+            return data_type
+        if any(indicator in value_str for indicator in indicators):
+            return data_type
+    
+    # Check original codebase for type hints
+    if original_codebase:
+        codebase_lower = original_codebase.lower()
+        if value_str in codebase_lower:
+            # Look for type annotations or SQL type definitions
+            if f'{value_str} varchar' in codebase_lower or f'{value_str} text' in codebase_lower:
+                return 'string'
+            elif f'{value_str} int' in codebase_lower or f'{value_str} number' in codebase_lower:
+                return 'integer'
+            elif f'{value_str} date' in codebase_lower or f'{value_str} timestamp' in codebase_lower:
+                return 'datetime'
+            elif f'{value_str} bool' in codebase_lower:
+                return 'boolean'
+    
+    return 'string'  # Default fallback
+
+
+def infer_crud_operations(original_codebase, table_name, column_name=None):
+    """Infer CRUD operations from codebase analysis"""
+    if not original_codebase:
+        return 'UNKNOWN'
+    
+    codebase_lower = original_codebase.lower()
+    table_lower = table_name.lower()
+    operations = set()
+    
+    # Check for SQL operations on this table
+    if f'select * from {table_lower}' in codebase_lower or f'select' in codebase_lower and table_lower in codebase_lower:
+        operations.add('READ')
+    
+    if f'insert into {table_lower}' in codebase_lower:
+        operations.add('CREATE')
+    
+    if f'update {table_lower}' in codebase_lower:
+        operations.add('UPDATE')
+    
+    if f'delete from {table_lower}' in codebase_lower:
+        operations.add('DELETE')
+    
+    # Check for ORM patterns
+    orm_patterns = {
+        'READ': [f'{table_lower}.find', f'{table_lower}.get', f'{table_lower}.select'],
+        'CREATE': [f'{table_lower}.create', f'{table_lower}.insert', f'{table_lower}.save'],
+        'UPDATE': [f'{table_lower}.update', f'{table_lower}.modify', f'{table_lower}.save'],
+        'DELETE': [f'{table_lower}.delete', f'{table_lower}.remove', f'{table_lower}.destroy']
+    }
+    
+    for operation, patterns in orm_patterns.items():
+        if any(pattern in codebase_lower for pattern in patterns):
+            operations.add(operation)
+    
+    # Column-specific analysis
+    if column_name:
+        col_lower = column_name.lower()
+        if col_lower in ['id', 'uuid', 'primary_key']:
+            operations.add('READ')  # IDs are typically read-only
+        elif 'password' in col_lower:
+            operations.add('CREATE')
+            operations.add('UPDATE')  # Passwords are created and updated, rarely read
+    
+    return ','.join(sorted(operations)) if operations else 'READ'  # Default to READ
+
+
+def analyze_table_columns(db_entry, original_codebase, table_name):
+    """Analyze extracted data and codebase to find detailed column information"""
+    columns = []
+    
+    # Look for column information in the extracted data
+    for key, value in db_entry.items():
+        key_lower = key.lower()
+        
+        # Look for column/field lists
+        if any(keyword in key_lower for keyword in ['column', 'field', 'attribute']):
+            if isinstance(value, list):
+                for col in value:
+                    if isinstance(col, str):
+                        columns.append({
+                            "column_name": col,
+                            "data_type": infer_data_type(key, col, original_codebase),
+                            "CRUD": infer_crud_operations(original_codebase, table_name, col)
+                        })
+            elif isinstance(value, str):
+                columns.append({
+                    "column_name": value,
+                    "data_type": infer_data_type(key, value, original_codebase),
+                    "CRUD": infer_crud_operations(original_codebase, table_name, value)
+                })
+    
+    # If no columns found in extracted data, try to parse from original codebase
+    if not columns and original_codebase:
+        columns = extract_columns_from_codebase(original_codebase, table_name)
+    
+    return columns
+
+
+def extract_columns_from_codebase(codebase, table_name):
+    """Extract column information from original codebase"""
+    columns = []
+    
+    # Pattern for SQL CREATE TABLE statements
+    create_pattern = rf'(?i)CREATE\s+TABLE\s+{re.escape(table_name)}\s*\((.*?)\)'
+    match = re.search(create_pattern, codebase, re.DOTALL)
+    
+    if match:
+        columns_def = match.group(1)
+        # Parse column definitions
+        column_lines = [line.strip() for line in columns_def.split(',')]
+        
+        for line in column_lines:
+            if line and not line.upper().startswith(('PRIMARY', 'FOREIGN', 'UNIQUE', 'INDEX')):
+                parts = line.split()
+                if len(parts) >= 2:
+                    col_name = parts[0].strip('`"[]')
+                    col_type = parts[1].upper()
+                    
+                    # Map SQL types to our types
+                    type_mapping = {
+                        'VARCHAR': 'string', 'TEXT': 'string', 'CHAR': 'string',
+                        'INT': 'integer', 'INTEGER': 'integer', 'BIGINT': 'integer',
+                        'DECIMAL': 'decimal', 'FLOAT': 'decimal', 'DOUBLE': 'decimal',
+                        'DATE': 'datetime', 'DATETIME': 'datetime', 'TIMESTAMP': 'datetime',
+                        'BOOLEAN': 'boolean', 'BOOL': 'boolean',
+                        'JSON': 'json', 'JSONB': 'json'
+                    }
+                    
+                    mapped_type = 'string'  # default
+                    for sql_type, our_type in type_mapping.items():
+                        if col_type.startswith(sql_type):
+                            mapped_type = our_type
+                            break
+                    
+                    columns.append({
+                        "column_name": col_name,
+                        "data_type": mapped_type,
+                        "CRUD": infer_crud_operations(codebase, table_name, col_name)
+                    })
+    
+    return columns
+
+
 def transform_actual_extracted_data(db_info_list, all_vector_results, system_prompt):
     """Transform actual extracted data into final structure WITHOUT making new LLM calls"""
     st.write("🏗️ **Building final database structure using ACTUAL extracted data...**")
@@ -651,38 +854,43 @@ def transform_actual_extracted_data(db_info_list, all_vector_results, system_pro
         table_entry = {source_file: {}}
         table_found = False
         
-        # Look through the ACTUAL extracted data for table information
+        # Look through the ACTUAL extracted data for table information with enhanced analysis
         for key, value in db_entry.items():
             key_lower = key.lower()
             
             # Check for table-related keys
             if any(keyword in key_lower for keyword in ['table', 'schema', 'model', 'entity']):
                 if isinstance(value, str) and value.strip():
-                    # Single table name
-                    table_entry[source_file][value] = {
-                        "Field Information": [{
+                    # Single table name - analyze for more detailed information
+                    table_name = value.strip()
+                    columns_info = analyze_table_columns(db_entry, original_codebase, table_name)
+                    
+                    table_entry[source_file][table_name] = {
+                        "Field Information": columns_info if columns_info else [{
                             "column_name": f"extracted_from_{key}",
-                            "data_type": "unknown",
-                            "CRUD": "UNKNOWN"
+                            "data_type": infer_data_type(key, value, original_codebase),
+                            "CRUD": infer_crud_operations(original_codebase, table_name)
                         }]
                     }
                     table_found = True
-                    st.success(f"✅ **Found table '{value}' from key '{key}'**")
+                    st.success(f"✅ **Found table '{table_name}' from key '{key}' with {len(table_entry[source_file][table_name]['Field Information'])} field(s)**")
                 elif isinstance(value, list):
                     # Multiple tables
                     for table_name in value:
                         if isinstance(table_name, str) and table_name.strip():
+                            columns_info = analyze_table_columns(db_entry, original_codebase, table_name)
+                            
                             table_entry[source_file][table_name] = {
-                                "Field Information": [{
-                                    "column_name": f"extracted_from_{key}",
-                                    "data_type": "unknown", 
-                                    "CRUD": "UNKNOWN"
+                                "Field Information": columns_info if columns_info else [{
+                                    "column_name": f"from_{key}",
+                                    "data_type": infer_data_type(key, table_name, original_codebase),
+                                    "CRUD": infer_crud_operations(original_codebase, table_name)
                                 }]
                             }
                             table_found = True
                     st.success(f"✅ **Found {len(value)} tables from key '{key}': {value}**")
             
-            # Check for column-related keys
+            # Check for column-related keys with enhanced data type detection
             elif any(keyword in key_lower for keyword in ['column', 'field', 'attribute']):
                 table_name = "UNKNOWN_TABLE"
                 # Try to find associated table name
@@ -695,26 +903,30 @@ def transform_actual_extracted_data(db_info_list, all_vector_results, system_pro
                     if table_name not in table_entry[source_file]:
                         table_entry[source_file][table_name] = {"Field Information": []}
                     
-                    table_entry[source_file][table_name]["Field Information"].append({
+                    # Enhanced column analysis
+                    column_info = {
                         "column_name": value,
-                        "data_type": "extracted",
-                        "CRUD": "UNKNOWN"
-                    })
+                        "data_type": infer_data_type(key, value, original_codebase),
+                        "CRUD": infer_crud_operations(original_codebase, table_name, value)
+                    }
+                    
+                    table_entry[source_file][table_name]["Field Information"].append(column_info)
                     table_found = True
-                    st.success(f"✅ **Found column '{value}' for table '{table_name}'**")
+                    st.success(f"✅ **Found column '{value}' for table '{table_name}' (type: {column_info['data_type']}, CRUD: {column_info['CRUD']})**")
                 elif isinstance(value, list):
                     if table_name not in table_entry[source_file]:
                         table_entry[source_file][table_name] = {"Field Information": []}
                     
                     for col_name in value:
                         if isinstance(col_name, str) and col_name.strip():
-                            table_entry[source_file][table_name]["Field Information"].append({
+                            column_info = {
                                 "column_name": col_name,
-                                "data_type": "extracted",
-                                "CRUD": "UNKNOWN"
-                            })
+                                "data_type": infer_data_type(key, col_name, original_codebase),
+                                "CRUD": infer_crud_operations(original_codebase, table_name, col_name)
+                            }
+                            table_entry[source_file][table_name]["Field Information"].append(column_info)
                     table_found = True
-                    st.success(f"✅ **Found {len(value)} columns for table '{table_name}': {value}**")
+                    st.success(f"✅ **Found {len(value)} columns for table '{table_name}' with enhanced analysis**")
         
         if table_found and table_entry[source_file]:
             final_output["Table Information"].append(table_entry)
@@ -722,49 +934,63 @@ def transform_actual_extracted_data(db_info_list, all_vector_results, system_pro
         else:
             st.info(f"ℹ️ **No table information found in extracted data for {source_file}**")
         
-        # Process SQL Queries using ACTUAL extracted data
-        st.write("**🔍 Step 2: Processing SQL Queries from REAL Extracted Data**")
+        # Process SQL Queries using BOTH extracted data AND original codebase
+        st.write("**🔍 Step 2: Processing SQL Queries from REAL Extracted Data AND Original Code**")
         
         sql_found = False
+        
+        # Method 1: Check extracted data for SQL queries
         for key, value in db_entry.items():
             if isinstance(value, str):
                 value_lower = value.lower()
                 # Check if this value contains SQL keywords
                 if any(sql_keyword in value_lower for sql_keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop']):
-                    # Basic SQL validation
-                    if len(value.strip()) > 10:  # Reasonable minimum SQL length
-                        final_output["SQL_QUERIES"].append(value.strip())
-                        st.success(f"✅ **Found SQL query from key '{key}':**")
-                        st.code(value.strip(), language="sql")
+                    # Enhanced SQL validation
+                    cleaned_query = value.strip()
+                    if len(cleaned_query) > 10 and validate_sql_basic(cleaned_query):
+                        final_output["SQL_QUERIES"].append(cleaned_query)
+                        st.success(f"✅ **Found SQL query from extracted key '{key}':**")
+                        st.code(cleaned_query, language="sql")
                         sql_found = True
                     else:
                         # Add to invalid queries
                         final_output["Invalid_SQL_Queries"].append({
                             "source_file": source_file,
-                            "query": value.strip(),
-                            "reason": "Too short to be valid SQL"
+                            "query": cleaned_query,
+                            "reason": "Invalid SQL syntax or too short"
                         })
-                        st.warning(f"⚠️ **Found invalid SQL from key '{key}' (too short)**")
+                        st.warning(f"⚠️ **Found invalid SQL from key '{key}' (validation failed)**")
             elif isinstance(value, list):
                 # Handle lists of SQL queries
                 for item in value:
                     if isinstance(item, str):
                         item_lower = item.lower()
                         if any(sql_keyword in item_lower for sql_keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop']):
-                            if len(item.strip()) > 10:
-                                final_output["SQL_QUERIES"].append(item.strip())
+                            cleaned_query = item.strip()
+                            if len(cleaned_query) > 10 and validate_sql_basic(cleaned_query):
+                                final_output["SQL_QUERIES"].append(cleaned_query)
                                 st.success(f"✅ **Found SQL query from list in key '{key}':**")
-                                st.code(item.strip(), language="sql")
+                                st.code(cleaned_query, language="sql")
                                 sql_found = True
                             else:
                                 final_output["Invalid_SQL_Queries"].append({
                                     "source_file": source_file,
-                                    "query": item.strip(),
-                                    "reason": "Too short to be valid SQL"
+                                    "query": cleaned_query,
+                                    "reason": "Invalid SQL syntax or too short"
                                 })
         
+        # Method 2: Also scan the original codebase for SQL patterns
+        if original_codebase:
+            codebase_queries = extract_sql_from_codebase(original_codebase)
+            for query in codebase_queries:
+                if query not in final_output["SQL_QUERIES"]:  # Avoid duplicates
+                    final_output["SQL_QUERIES"].append(query)
+                    st.success(f"✅ **Found SQL query from original codebase:**")
+                    st.code(query, language="sql")
+                    sql_found = True
+        
         if not sql_found:
-            st.info(f"ℹ️ **No SQL queries found in extracted data for {source_file}**")
+            st.info(f"ℹ️ **No SQL queries found in extracted data or original code for {source_file}**")
     
     # Summary of what was processed using REAL data
     st.markdown("---")
