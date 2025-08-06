@@ -305,6 +305,37 @@ def robust_json_parse(text_output, file_source="unknown"):
     return fallback_data, "Used fallback structure due to JSON parsing failure"
 
 
+def deduplicate_server_info(server_info_array):
+    """Remove duplicate server information based on host, port, and database_name"""
+    if not server_info_array:
+        return []
+    
+    seen_servers = set()
+    deduplicated = []
+    
+    for server_info in server_info_array:
+        if not isinstance(server_info, dict):
+            continue
+            
+        # Create a key based on host, port, and database_name
+        host = server_info.get('host', '').strip().lower()
+        port = str(server_info.get('port', '')).strip()
+        db_name = server_info.get('database_name', '').strip().lower()
+        
+        # Create unique key
+        server_key = f"{host}:{port}:{db_name}"
+        
+        if server_key not in seen_servers and (host or port or db_name):
+            seen_servers.add(server_key)
+            deduplicated.append(server_info)
+            st.info(f"✅ **Added unique server:** {host}:{port}/{db_name}")
+        elif server_key in seen_servers:
+            st.warning(f"⚠️ **Skipped duplicate server:** {host}:{port}/{db_name}")
+    
+    st.success(f"🔄 **Deduplication complete:** {len(server_info_array)} → {len(deduplicated)} servers")
+    return deduplicated
+
+
 def extract_server_information(data, system_prompt, vector_query):
     """Extract server information using workflow approach"""
     st.subheader("🖥️ Server Information Extraction")
@@ -437,7 +468,9 @@ def extract_server_information(data, system_prompt, vector_query):
             st.error(f"❌ **Critical Error processing file {i}**: {str(file_error)}")
             continue
 
-    return server_info_array
+    # Deduplicate server information before returning
+    deduplicated_servers = deduplicate_server_info(server_info_array)
+    return deduplicated_servers
 
 
 def extract_database_information_workflow(data, system_prompt, vector_query):
