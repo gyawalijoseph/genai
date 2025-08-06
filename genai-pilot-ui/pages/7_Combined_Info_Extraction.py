@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 
 from utils.githubUtil import commit_json
+from utils.metadataUtil import fetch_metadata
 
 # Dynamic configuration - can be modified for any codebase
 DEFAULT_DATABASE_SYSTEM_PROMPT = "You are an expert at analyzing code for database configurations, connections, queries, and data models."
@@ -1162,6 +1163,7 @@ def main():
                         "databases_searched": target_databases,
                         "extraction_type": "combined_server_database"
                     },
+                    "Application": {},
                     "Server Information": [],
                     "Database Information": {
                         "Table Information": [],
@@ -1169,6 +1171,23 @@ def main():
                         "Invalid_SQL_Queries": []
                     }
                 }
+
+                # Step 0: Car Info (Application Metadata) Extraction
+                st.subheader("🚗 Step 0: Car Info (Application Metadata)")
+                st.info(f"**🗂️ Fetching metadata for:** `{codebase}`")
+                
+                try:
+                    metadata = fetch_metadata(codebase)
+                    if metadata is not None:
+                        combined_results['Application'] = metadata
+                        st.success("✅ **Car info extraction completed!**")
+                        st.json(metadata)
+                    else:
+                        st.warning("⚠️ **No car info/metadata found**")
+                        combined_results['Application'] = {}
+                except Exception as e:
+                    st.error(f"❌ **Car info extraction failed:** {str(e)}")
+                    combined_results['Application'] = {}
 
                 # Step 1: Server Information Extraction
                 st.subheader("🖥️ Step 1: Server Information Extraction")
@@ -1220,6 +1239,7 @@ def main():
                 with col2:
                     # Clean format without metadata
                     clean_results = {
+                        "Application": combined_results["Application"],
                         "Server Information": combined_results["Server Information"],
                         "Database Information": combined_results["Database Information"]
                     }

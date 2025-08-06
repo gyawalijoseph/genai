@@ -8,6 +8,14 @@ from utils.LLMUtil import SQL_DB_Extraction_v2
 
 def generate_spec(codebase, vector_results_count):
     json_document = {}
+
+    # Car Info
+    st.title("Car Info")
+    metadata = fetch_metadata(codebase)
+    if metadata is not None:
+        json_document['Application'] = metadata
+    st.markdown("---")
+
     st.title("Server Info")
     data = vector_search(codebase + "-external-files", "server host", vector_results_count)
     server_information = Server_LLM_Extraction(data, SERVER_SYSTEM_PROMPT)
@@ -44,15 +52,6 @@ def generate_spec(codebase, vector_results_count):
     st.markdown("---")
     json_document["Database Information"]["Server Information"] = server_information
 
-    st.title("Addresses Extraction")
-    extracted_addresses = get_addresses(codebase)
-    # print(extracted_addresses)
-    if len(extracted_addresses['addresses']) > 0:
-        json_document["Addresses"] = extracted_addresses['addresses']
-
-    if len(extracted_addresses['dependentAddresses']) > 0:
-        json_document["Dependent Addresses"] = extracted_addresses['dependentAddresses']
-    st.markdown("---")
 
     st.title("Summary")
     st.json(json_document)
