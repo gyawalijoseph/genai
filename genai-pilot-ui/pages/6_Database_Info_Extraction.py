@@ -349,7 +349,7 @@ def dynamic_database_extraction(data, system_prompt, vector_query, extraction_co
                                   system_prompt, detection_prompt, codebase, file_source, url, timestamp)
                         continue
 
-                    output = response_json.get('output', '')
+                    output = response_json.get('output') or ''
 
                     # Check if LLM explicitly indicated no database information found
                     output_stripped = output.strip().lower()
@@ -736,7 +736,7 @@ If no database information found, return: {"tables": {}, "sql_queries": [], "inv
             st.warning(f"⚠️ **LLM detailed analysis blocked for {file_source}:** {status_code}")
             return None
             
-        output = response_json.get('output', '')
+        output = response_json.get('output') or ''
         
         # Parse the detailed response
         parsed_data, parse_error = robust_json_parse(output, file_source)
@@ -1054,7 +1054,7 @@ def main():
                                 if response.status_code == 200:
                                     response_json = response.json()
                                     if response_json.get('status_code', 200) == 200:
-                                        output = response_json.get('output', '').lower()
+                                        output = response_json.get('output') or ''.lower()
                                         
                                         if 'yes' in output:
                                             st.success(f"✅ **Table information detected in {source_file}**")
@@ -1117,7 +1117,7 @@ def main():
                                 if response.status_code == 200:
                                     response_json = response.json()
                                     if response_json.get('status_code', 200) == 200:
-                                        output = response_json.get('output', '').lower()
+                                        output = response_json.get('output') or ''.lower()
                                         
                                         if 'yes' in output:
                                             st.success(f"✅ **SQL queries detected in {source_file}**")

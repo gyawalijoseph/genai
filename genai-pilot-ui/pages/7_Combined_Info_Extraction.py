@@ -318,9 +318,9 @@ def deduplicate_server_info(server_info_array):
             continue
             
         # Create a key based on host, port, and database_name
-        host = server_info.get('host', '').strip().lower()
-        port = str(server_info.get('port', '')).strip()
-        db_name = server_info.get('database_name', '').strip().lower()
+        host = (server_info.get('host') or '').strip().lower()
+        port = str(server_info.get('port') or '').strip()
+        db_name = (server_info.get('database_name') or '').strip().lower()
         
         # Create unique key
         server_key = f"{host}:{port}:{db_name}"
@@ -419,7 +419,7 @@ def extract_server_information(data, system_prompt, vector_query):
                         continue
 
                     status_code = response_json.get('status_code', response.status_code)
-                    output = response_json.get('output', '')
+                    output = response_json.get('output') or ''
 
                     # Always show LLM call details for transparency
                     display_llm_call_details("Server Detection", system_prompt, detection_prompt, codebase, output, file_source, i)
@@ -556,7 +556,7 @@ def extract_database_information_workflow(data, system_prompt, vector_query):
                         continue
 
                     status_code = response_json.get('status_code', response.status_code)
-                    output = response_json.get('output', '')
+                    output = response_json.get('output') or ''
 
                     # Always show LLM call details for transparency
                     display_llm_call_details("Database Detection", system_prompt, detection_prompt, codebase, output, file_source, i)

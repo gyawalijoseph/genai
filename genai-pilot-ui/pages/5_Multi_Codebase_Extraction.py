@@ -195,7 +195,7 @@ def process_single_codebase(codebase, system_prompt, vector_query, vector_result
                     continue
                 
                 # Process successful response
-                output = response_json.get('output', '')
+                output = response_json.get('output') or ''
                 
                 # Check if no server information found
                 if 'no' in output.lower() or 'No' in output:

@@ -149,9 +149,9 @@ def deduplicate_server_info(server_info_array):
             continue
             
         # Create a key based on host, port, and database_name
-        host = server_info.get('host', '').strip().lower()
-        port = str(server_info.get('port', '')).strip()
-        db_name = server_info.get('database_name', '').strip().lower()
+        host = (server_info.get('host') or '').strip().lower()
+        port = str(server_info.get('port') or '').strip()
+        db_name = (server_info.get('database_name') or '').strip().lower()
         
         # Create unique key
         server_key = f"{host}:{port}:{db_name}"
@@ -206,7 +206,7 @@ def extract_server_information_batch(data, system_prompt, vector_query):
                     continue
 
                 status_code = response_json.get('status_code', response.status_code)
-                output = response_json.get('output', '')
+                output = response_json.get('output') or ''
 
                 if status_code != 200:
                     continue
@@ -275,7 +275,7 @@ def extract_database_information_batch(data, system_prompt, vector_query):
                     continue
 
                 status_code = response_json.get('status_code', response.status_code)
-                output = response_json.get('output', '')
+                output = response_json.get('output') or ''
 
                 if status_code != 200:
                     continue

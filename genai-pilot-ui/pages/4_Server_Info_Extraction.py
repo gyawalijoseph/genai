@@ -288,7 +288,7 @@ def safechain_server_extraction(data, system_prompt, vector_query):
                         continue
 
                     # Process successful response
-                    output = response_json.get('output', '')
+                    output = response_json.get('output') or ''
 
                     # Check if no server information found (following LLMUtil pattern)
                     if 'no' in output.lower() or 'No' in output:
