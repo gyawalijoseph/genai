@@ -24,7 +24,7 @@ if 'combined_error_logs' not in st.session_state:
     st.session_state['combined_error_logs'] = []
 
 
-def vector_search_single(codebase, similarity_search_query, vector_results_count, search_suffix):
+def vector_search_single(codebase, similarity_search_query, vector_results_count, search_suffix, similarity_threshold=0.4):
     """
     Single vector search implementation for one database
     """
@@ -33,7 +33,8 @@ def vector_search_single(codebase, similarity_search_query, vector_results_count
     payload = {
         "codebase": search_target,
         "query": similarity_search_query,
-        "vector_results_count": vector_results_count
+        "vector_results_count": vector_results_count,
+        "similarity_threshold": similarity_threshold
     }
 
     try:
@@ -108,7 +109,7 @@ def vector_search_single(codebase, similarity_search_query, vector_results_count
         return {"results": [], "search_target": search_target, "success": False}
 
 
-def vector_search_multiple(codebase, similarity_search_query, vector_results_count, search_suffixes=["-external-files", ""]):
+def vector_search_multiple(codebase, similarity_search_query, vector_results_count, search_suffixes=["-external-files", ""], similarity_threshold=0.4):
     """
     Multiple vector search implementation that searches both external files and actual codebase
     """
@@ -118,7 +119,7 @@ def vector_search_multiple(codebase, similarity_search_query, vector_results_cou
     for suffix in search_suffixes:
         search_name = f"{codebase}{suffix}" if suffix else codebase
         
-        result = vector_search_single(codebase, similarity_search_query, vector_results_count, suffix)
+        result = vector_search_single(codebase, similarity_search_query, vector_results_count, suffix, similarity_threshold)
         
         search_summary.append({
             "database": search_name,
@@ -342,14 +343,39 @@ def extract_server_information(data, system_prompt, vector_query):
     st.info(f"**Vector Search Query Used:** `{vector_query}`")
     st.info(f"**Files Found:** {len(data['results'])}")
 
+    # Show similarity scores if available
+    if data['results'] and 'similarity_score' in data['results'][0]:
+        st.write("**🎯 Similarity Scores (Post-Filtering):**")
+        scores = [float(result.get('similarity_score', 0)) for result in data['results']]
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Best Match", f"{max(scores):.3f}")
+        with col2:
+            st.metric("Average", f"{sum(scores) / len(scores):.3f}")
+        with col3:
+            st.metric("Lowest", f"{min(scores):.3f}")
+        with col4:
+            st.metric("Results", len(scores))
+        
+        # Quality indicator
+        avg_score = sum(scores) / len(scores)
+        if avg_score >= 0.8:
+            st.success("🎯 **High Quality Results** - Excellent similarity matches!")
+        elif avg_score >= 0.6:
+            st.info("👍 **Good Quality Results** - Solid similarity matches")
+        elif avg_score >= 0.4:
+            st.warning("⚠️ **Mixed Quality Results** - Consider raising threshold")
+        else:
+            st.error("❌ **Low Quality Results** - Consider raising threshold significantly")
+
     server_info_array = []
 
     for i, result in enumerate(data['results'], 1):
         try:
             similarity_info = ""
-            if 'score' in result.get('metadata', {}):
-                score = float(result['metadata']['score'])
-                similarity_info = f" (Similarity: {score:.3f})"
+            if 'similarity_score' in result:
+                score = float(result['similarity_score'])
+                similarity_info = f" (Match #{i}, Similarity: {score:.3f})"
 
             search_target = result.get('search_target', 'Unknown Database')
             st.markdown(f"### 🖥️ Processing Server Snippet {i}/{len(data['results'])}: `{result['metadata']['source']}`{similarity_info}")
@@ -479,14 +505,39 @@ def extract_database_information_workflow(data, system_prompt, vector_query):
     st.info(f"**Vector Search Query Used:** `{vector_query}`")
     st.info(f"**Files Found:** {len(data['results'])}")
 
+    # Show similarity scores if available
+    if data['results'] and 'similarity_score' in data['results'][0]:
+        st.write("**🎯 Similarity Scores (Post-Filtering):**")
+        scores = [float(result.get('similarity_score', 0)) for result in data['results']]
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Best Match", f"{max(scores):.3f}")
+        with col2:
+            st.metric("Average", f"{sum(scores) / len(scores):.3f}")
+        with col3:
+            st.metric("Lowest", f"{min(scores):.3f}")
+        with col4:
+            st.metric("Results", len(scores))
+        
+        # Quality indicator
+        avg_score = sum(scores) / len(scores)
+        if avg_score >= 0.8:
+            st.success("🎯 **High Quality Results** - Excellent similarity matches!")
+        elif avg_score >= 0.6:
+            st.info("👍 **Good Quality Results** - Solid similarity matches")
+        elif avg_score >= 0.4:
+            st.warning("⚠️ **Mixed Quality Results** - Consider raising threshold")
+        else:
+            st.error("❌ **Low Quality Results** - Consider raising threshold significantly")
+
     database_info_array = []
 
     for i, result in enumerate(data['results'], 1):
         try:
             similarity_info = ""
-            if 'score' in result.get('metadata', {}):
-                score = float(result['metadata']['score'])
-                similarity_info = f" (Similarity: {score:.3f})"
+            if 'similarity_score' in result:
+                score = float(result['similarity_score'])
+                similarity_info = f" (Match #{i}, Similarity: {score:.3f})"
 
             search_target = result.get('search_target', 'Unknown Database')
             st.markdown(f"### 📄 Processing Database Snippet {i}/{len(data['results'])}: `{result['metadata']['source']}`{similarity_info}")
@@ -1145,10 +1196,19 @@ def main():
         with col2:
             vector_results_count = st.number_input(
                 '📊 Max Results Count (per database):',
-                value=10,
+                value=15,
                 min_value=1,
                 max_value=50,
-                help="Maximum number of files to process from each vector database"
+                help="Optimal: 5-8 for small codebases, 8-15 for medium, 15-25 for large"
+            )
+            
+            similarity_threshold = st.slider(
+                '🎯 Similarity Threshold:',
+                min_value=0.0,
+                max_value=1.0,
+                value=0.4,
+                step=0.05,
+                help="Filter out results below this similarity score (0.4=noise filter, 0.6=medium quality, 0.8=high quality)"
             )
             
             server_system_prompt = st.text_area(
@@ -1165,6 +1225,27 @@ def main():
             )
 
         st.info("🗄️ **Automatic Multi-Database Search:** Will search both main codebase and external files")
+        
+        # Optimization guidance
+        with st.expander("⚡ **Optimization Guide**", expanded=False):
+            st.markdown("""
+            **🎯 Similarity Threshold Guidelines:**
+            - **0.8+:** High confidence matches only (very selective)
+            - **0.6-0.8:** Medium quality matches (balanced)
+            - **0.4-0.6:** Include potentially relevant content
+            - **<0.4:** Usually noise (wastes LLM calls)
+            
+            **📊 Results Count Guidelines:**
+            - **Small codebase (<100 files):** 5-8 results
+            - **Medium codebase (100-1000 files):** 8-15 results
+            - **Large codebase (>1000 files):** 15-25 results
+            
+            **💡 Pro Tips:**
+            - Higher thresholds = fewer but more relevant results
+            - Lower thresholds = more comprehensive but noisier results  
+            - Start with 0.4 threshold and adjust based on result quality
+            """)
+        
 
         submit_button = st.form_submit_button(
             '🚀 Start Combined Information Extraction',
@@ -1226,8 +1307,9 @@ def main():
                 st.subheader("🖥️ Step 1: Server Information Extraction")
                 st.info(f"**🗂️ Target Databases:** `{', '.join(target_databases)}`")
                 st.info(f"**🔍 Search Query:** `{server_vector_query}`")
+                st.info(f"**🎯 Similarity Threshold:** `{similarity_threshold}` (filtering out low-quality matches)")
 
-                server_data = vector_search_multiple(codebase, server_vector_query, vector_results_count, search_suffixes)
+                server_data = vector_search_multiple(codebase, server_vector_query, vector_results_count, search_suffixes, similarity_threshold)
 
                 if server_data and 'results' in server_data and len(server_data['results']) > 0:
                     server_information = extract_server_information(server_data, server_system_prompt, server_vector_query)
@@ -1239,8 +1321,9 @@ def main():
                 # Step 2: Database Information Extraction
                 st.subheader("🗄️ Step 2: Database Information Extraction")
                 st.info(f"**🔍 Search Query:** `{database_vector_query}`")
+                st.info(f"**🎯 Similarity Threshold:** `{similarity_threshold}` (filtering out low-quality matches)")
 
-                database_data = vector_search_multiple(codebase, database_vector_query, vector_results_count, search_suffixes)
+                database_data = vector_search_multiple(codebase, database_vector_query, vector_results_count, search_suffixes, similarity_threshold)
 
                 if database_data and 'results' in database_data and len(database_data['results']) > 0:
                     database_information = extract_database_information_workflow(database_data, database_system_prompt, database_vector_query)

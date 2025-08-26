@@ -24,14 +24,17 @@ def search_vector():
     codebase = data.get('codebase')
     query = data.get('query')
     vector_results_count = int(data.get('vector_results_count', 10))
+    similarity_threshold = float(data.get('similarity_threshold', 0.4))
 
     try:
-        print("Performing vectorstore similarity search with codebase:")
-        results = similarity_search_pgvector(codebase, query, vector_results_count)
+        print(f"Performing vectorstore similarity search with codebase: {codebase}, threshold: {similarity_threshold}")
+        results = similarity_search_pgvector(codebase, query, vector_results_count, similarity_threshold)
 
         return jsonify({
             "codebase": codebase,
-            "results": results
+            "results": results,
+            "similarity_threshold": similarity_threshold,
+            "filtered_count": len(results)
         })
     except Exception as e:
         return jsonify({

@@ -34,25 +34,34 @@ def safechain_llm_call(system_prompt, user_prompt, codebase, max_retries=1, dela
             else:
                 return f"Failed after {max_retries} attempts: {str(e)}", 400
 
-def similarity_search_pgvector(codebase, query, vector_results_count):
+def similarity_search_pgvector(codebase, query, vector_results_count, similarity_threshold=0.4):
     vectorstore = get_connection('1', {
         "collection_name": codebase,
         "embedding_model_index": "ada-3",
         "schema": "tapld00"
     })
 
-    similarity_search_response = vectorstore.similarity_search(query, k=vector_results_count)
+    # Get more results initially to account for filtering
+    search_count = min(vector_results_count * 2, 50)  # Get up to 2x requested, max 50
+    similarity_search_response = vectorstore.similarity_search_with_score(query, k=search_count)
     
-    # Filter out unwanted files from the results
+    # Filter out unwanted files and low similarity scores
     excluded_files = ['buildblock.yaml', 'buildblock.yml', '.buildblock.yaml', '.buildblock.yml']
     filtered_results = []
     
-    for doc in similarity_search_response:
+    for doc, score in similarity_search_response:
         source_file = doc.metadata.get('source', '')
         file_name = source_file.split('/')[-1] if '/' in source_file else source_file
         
-        # Skip excluded files
-        if file_name.lower() not in [f.lower() for f in excluded_files]:
-            filtered_results.append({'page_content': doc.page_content, 'metadata': doc.metadata})
+        # Skip excluded files and low similarity scores
+        if (file_name.lower() not in [f.lower() for f in excluded_files] and 
+            float(score) >= similarity_threshold):
+            filtered_results.append({
+                'page_content': doc.page_content, 
+                'metadata': doc.metadata,
+                'similarity_score': float(score)
+            })
     
-    return filtered_results
+    # Sort by similarity score (highest first) and limit to requested count
+    filtered_results.sort(key=lambda x: x['similarity_score'], reverse=True)
+    return filtered_results[:vector_results_count]
