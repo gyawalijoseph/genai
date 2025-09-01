@@ -1,20 +1,22 @@
 
 def embed_readme_content(codebase_name, readme_content_list):
-    """Embed README content directly without cloning repository"""
+    """Embed README content directly using existing embedding flow"""
     try:
-        from utilities.utils import create_embeddings_from_text
+        from utilities.utils import perform_embedding_postgres
+        from langchain.schema import Document
         
-        # Join all README content into documents
+        # Create Document objects from README content
         documents = []
         for i, content in enumerate(readme_content_list):
-            documents.append({
-                'content': content,
-                'metadata': {'source': f'readme_file_{i+1}'}
-            })
+            doc = Document(
+                page_content=content,
+                metadata={'source': f'readme_file_{i+1}.md'}
+            )
+            documents.append(doc)
         
-        # Create embeddings
-        result = create_embeddings_from_text(codebase_name, documents)
-        return {"status": "success", "message": f"Embedded {len(documents)} README documents"}
+        # Use existing embedding function
+        result = perform_embedding_postgres(codebase_name, documents)
+        return result
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
