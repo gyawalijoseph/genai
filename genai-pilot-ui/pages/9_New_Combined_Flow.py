@@ -7,7 +7,7 @@ from git import Repo
 # Configuration
 LOCAL_BACKEND_URL = "http://localhost:5000"
 LLM_API_ENDPOINT = "/LLM-API"
-EMBED_API_ENDPOINT = "/embed"
+EMBED_README_ENDPOINT = "/embed-readme"
 HEADERS = {"Content-Type": "application/json"}
 
 # Hardcoded PAT - Replace with your actual token
@@ -102,12 +102,12 @@ def call_llm(content, file_path):
         except Exception as e:
             return f"Error: {str(e)}"
 
-def embed_readme_docs(codebase_name, readme_outputs):
+def embed_readme_docs(codebase_name, readme_results):
     """Embed the generated README documentation"""
-    url = f"{LOCAL_BACKEND_URL}{EMBED_API_ENDPOINT}"
+    url = f"{LOCAL_BACKEND_URL}{EMBED_README_ENDPOINT}"
     payload = {
         "codebase": codebase_name,
-        "external": False
+        "readme_content": readme_results
     }
     
     with st.spinner(f"🔄 Embedding README documentation as '{codebase_name}'..."):
