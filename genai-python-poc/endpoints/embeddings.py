@@ -1,21 +1,39 @@
 import os
 from flask import Blueprint, request, jsonify
-# from service.services import generate_embeddings
+from service.services import generate_embeddings
 from utilities.utils import similarity_search_pgvector
 
 embeddings_bp = Blueprint('embeddings', __name__)
 
-# @embeddings_bp.route('/embed', methods=['POST'])
-# def embed_codebase():
-#     data = request.json
-#     codebase = data.get('codebase')
-#     external = data.get('external')
-#
-#     result = generate_embeddings(codebase, external)
-#     if result.get('status') == 'error':
-#         return jsonify(result), 400
-#     else:
-#         return jsonify(result)
+@embeddings_bp.route('/embed', methods=['POST'])
+def embed_codebase():
+    data = request.json
+    codebase = data.get('codebase')
+    external = data.get('external')
+
+    result = generate_embeddings(codebase, external)
+    if result.get('status') == 'error':
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
+
+@embeddings_bp.route('/embed-readme', methods=['POST'])
+def embed_readme():
+    """Embed README content directly"""
+    from service.services import embed_readme_content
+    
+    data = request.json
+    codebase = data.get('codebase')
+    readme_content = data.get('readme_content')
+    
+    if not codebase or not readme_content:
+        return jsonify({"status": "error", "message": "Missing codebase or readme_content"}), 400
+    
+    try:
+        result = embed_readme_content(codebase, readme_content)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @embeddings_bp.route('/vector-search', methods=['POST'])
 def search_vector():
