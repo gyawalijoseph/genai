@@ -3,12 +3,13 @@ import requests
 import json
 import os
 import sys
+import shutil
 from datetime import datetime
+from git import Repo
 
 sys.path.append('../genai-python-poc')
 from utils.githubUtil import commit_json
 from utils.metadataUtil import fetch_metadata
-from genai_python_poc.utilities.github_utils import clone_repo, delete_repo
 
 # Configuration
 LOCAL_BACKEND_URL = "http://localhost:5000"
@@ -18,6 +19,41 @@ HEADERS = {"Content-Type": "application/json"}
 
 # README conversion prompt
 README_CONVERSION_PROMPT = """Create a concise readme for this source code. Create an overall summary, and add sections to identify databases used SQL Queries, and for external interfaces and APIs. If information is not there in code your output should say no information found."""
+
+# Git repository functions
+def clone_repo(codebase, pat=None):
+    """Clone repository with PAT authentication"""
+    try:
+        repo_url = "https://github.aexp.com/amex-eng/" + codebase
+        local_path = "./" + codebase
+        
+        if pat:
+            auth_repo_url = repo_url.replace("https://", f"https://{pat}@")
+        else:
+            # Try to get PAT from environment or use provided one
+            env_pat = os.getenv("pat")
+            if env_pat:
+                auth_repo_url = repo_url.replace("https://", f"https://{env_pat}@")
+            else:
+                st.error("❌ No PAT provided. Please enter your Personal Access Token.")
+                return False
+        
+        repo = Repo.clone_from(auth_repo_url, local_path)
+        return True
+    except Exception as e:
+        st.error(f"❌ Error cloning repo: {e}")
+        return False
+
+def delete_repo(codebase):
+    """Delete cloned repository directory"""
+    try:
+        if os.path.exists(codebase):
+            shutil.rmtree(codebase)
+            return True
+        return True
+    except Exception as e:
+        st.error(f"❌ Error deleting repo: {e}")
+        return False
 
 # Initialize session state
 if 'new_flow_logs' not in st.session_state:
@@ -76,13 +112,13 @@ def call_llm(system_prompt, user_prompt, content, step_name):
         log_error("llm_call_error", None, str(e), step_name, timestamp)
         return None
 
-def get_codebase_files_from_git(codebase_name, max_files=5):
+def get_codebase_files_from_git(codebase_name, max_files=5, pat=None):
     """Get files from the codebase by cloning from git and scanning actual files"""
     st.write(f"**📁 Step 1: Getting {max_files} files from git repository**")
     
     # Try to clone and scan actual files
     with st.spinner("🔄 Cloning repository and scanning for code files..."):
-        success = clone_repo(codebase_name)
+        success = clone_repo(codebase_name, pat)
         
         if success:
             st.success("✅ Repository cloned successfully!")
@@ -223,10 +259,10 @@ def get_codebase_files_vector_search(codebase_name, max_files=5):
         st.error(f"❌ **No files found in codebase '{codebase_name}'**")
         return []
 
-def get_codebase_files(codebase_name, max_files=5, use_git=True):
+def get_codebase_files(codebase_name, max_files=5, use_git=True, pat=None):
     """Get files from the codebase - either from git or vector search"""
     if use_git:
-        return get_codebase_files_from_git(codebase_name, max_files)
+        return get_codebase_files_from_git(codebase_name, max_files, pat)
     else:
         return get_codebase_files_vector_search(codebase_name, max_files)
 
@@ -441,6 +477,13 @@ def main():
                 help="Name of the codebase to process (must exist in vector database)"
             )
             
+            pat = st.text_input(
+                "🔑 Personal Access Token (PAT):",
+                type="password",
+                placeholder="Enter your GitHub PAT",
+                help="Personal Access Token for GitHub authentication. Leave empty to use environment variable."
+            )
+            
             max_files = st.number_input(
                 "📊 Number of Files to Process:",
                 min_value=1,
@@ -471,13 +514,15 @@ def main():
     if submit_button:
         if not codebase_name:
             st.error("❌ Please enter a codebase name")
+        elif not pat and not os.getenv("pat"):
+            st.error("❌ Please enter a Personal Access Token or set the 'pat' environment variable")
         else:
             try:
                 st.markdown("---")
                 st.header("🔄 Multi-File README Processing")
                 
                 # Step 1: Get files from codebase
-                files = get_codebase_files(codebase_name, max_files)
+                files = get_codebase_files(codebase_name, max_files, use_git=True, pat=pat)
                 
                 if files:
                     # Step 2: Process files to README format
