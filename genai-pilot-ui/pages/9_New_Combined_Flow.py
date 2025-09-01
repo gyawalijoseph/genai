@@ -9,24 +9,18 @@ LOCAL_BACKEND_URL = "http://localhost:5000"
 LLM_API_ENDPOINT = "/LLM-API"
 HEADERS = {"Content-Type": "application/json"}
 
+# Hardcoded PAT - Replace with your actual token
+GITHUB_PAT = "your_github_pat_here"
+
 # README conversion prompt
 README_CONVERSION_PROMPT = """Create a concise readme for this source code. Create an overall summary, and add sections to identify databases used SQL Queries, and for external interfaces and APIs. If information is not there in code your output should say no information found."""
 
-def clone_repo(codebase, pat=None):
-    """Clone repository with PAT authentication"""
+def clone_repo(codebase):
+    """Clone repository with hardcoded PAT authentication"""
     try:
         repo_url = "https://github.aexp.com/amex-eng/" + codebase
         local_path = "./" + codebase
-        
-        if pat:
-            auth_repo_url = repo_url.replace("https://", f"https://{pat}@")
-        else:
-            env_pat = os.getenv("pat")
-            if env_pat:
-                auth_repo_url = repo_url.replace("https://", f"https://{env_pat}@")
-            else:
-                st.error("❌ No PAT provided")
-                return False
+        auth_repo_url = repo_url.replace("https://", f"https://{GITHUB_PAT}@")
         
         Repo.clone_from(auth_repo_url, local_path)
         return True
@@ -67,8 +61,8 @@ def get_files(codebase):
                     continue
     return files
 
-def call_llm(content):
-    """Call LLM API with README conversion prompt"""
+def call_llm(content, file_path):
+    """Call LLM API with README conversion prompt and progress bar"""
     url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
     payload = {
         "system_prompt": "You are an expert technical writer who creates clear, concise documentation from source code.",
@@ -76,49 +70,63 @@ def call_llm(content):
         "codebase": content
     }
     
-    try:
-        response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
-        if response.status_code == 200:
-            response_json = response.json()
-            return response_json.get('output', 'No output received')
-        else:
-            return f"Error: HTTP {response.status_code}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+    with st.spinner(f"🔄 Generating README for {file_path}... Please wait, this may take a moment."):
+        try:
+            response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
+            if response.status_code == 200:
+                response_json = response.json()
+                return response_json.get('output', 'No output received')
+            else:
+                return f"Error: HTTP {response.status_code}"
+        except Exception as e:
+            return f"Error: {str(e)}"
 
 def main():
-    st.title("🔄 Simple README Converter")
-    st.write("Convert 5 code files to README format using LLM")
+    st.title("📚 Vectorizing Codebase with README Documentation Flow")
+    st.write("Convert 5 code files to README format using LLM for enhanced vectorization")
     
-    with st.form("simple_form"):
+    with st.form("readme_vectorization_form"):
         codebase_name = st.text_input("Codebase Name:", placeholder="my-project")
-        pat = st.text_input("PAT:", type="password", placeholder="Enter GitHub PAT")
-        submit = st.form_submit_button("🚀 Process")
+        submit = st.form_submit_button("🚀 Start README Vectorization")
     
     if submit and codebase_name:
         st.write("**Step 1: Cloning repository...**")
-        if clone_repo(codebase_name, pat):
+        if clone_repo(codebase_name):
             st.success("✅ Repository cloned")
             
             st.write("**Step 2: Getting files...**")
             files = get_files(codebase_name)
-            st.write(f"Found {len(files)} files")
+            st.write(f"Found {len(files)} files to process")
             
-            st.write("**Step 3: Processing with LLM...**")
+            st.write("**Step 3: Generating README documentation with LLM...**")
+            
+            # Progress bar for overall process
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
             for i, file_data in enumerate(files, 1):
+                # Update progress
+                progress = i / len(files)
+                progress_bar.progress(progress)
+                status_text.text(f"Processing file {i}/{len(files)}: {os.path.basename(file_data['path'])}")
+                
                 st.write(f"**File {i}: {file_data['path']}**")
                 
                 with st.expander(f"Original Code", expanded=False):
                     st.code(file_data['content'], language="text")
                 
-                readme_result = call_llm(file_data['content'])
+                readme_result = call_llm(file_data['content'], file_data['path'])
                 
                 with st.expander(f"Generated README", expanded=True):
                     st.markdown(readme_result)
             
+            # Complete progress
+            progress_bar.progress(1.0)
+            status_text.text("✅ All files processed successfully!")
+            
             st.write("**Step 4: Cleaning up...**")
             delete_repo(codebase_name)
-            st.success("✅ Complete!")
+            st.success("🎉 README vectorization flow complete!")
 
 if __name__ == "__main__":
     main()
