@@ -57,8 +57,8 @@ def count_total_files(codebase):
                     continue
     return total_count
 
-def get_files(codebase):
-    """Get 5 code files from cloned repository"""
+def get_files(codebase, max_files=5):
+    """Get code files from cloned repository"""
     file_extensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.sql']
     files = []
     
@@ -76,7 +76,7 @@ def get_files(codebase):
                             'path': file_path,
                             'content': content
                         })
-                        if len(files) >= 5:  # Hard-coded limit
+                        if len(files) >= max_files:
                             return files
                 except:
                     continue
@@ -102,15 +102,15 @@ def call_llm(content, file_path):
         except Exception as e:
             return f"Error: {str(e)}"
 
-def embed_readme_docs(vector_name, readme_outputs):
+def embed_readme_docs(codebase_name, readme_outputs):
     """Embed the generated README documentation"""
     url = f"{LOCAL_BACKEND_URL}{EMBED_API_ENDPOINT}"
     payload = {
-        "codebase": vector_name,
+        "codebase": codebase_name,
         "external": False
     }
     
-    with st.spinner(f"🔄 Embedding README documentation as '{vector_name}'..."):
+    with st.spinner(f"🔄 Embedding README documentation as '{codebase_name}'..."):
         try:
             response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
             if response.status_code == 200:
@@ -127,10 +127,8 @@ def main():
     
     with st.form("readme_vectorization_form"):
         codebase_name = st.text_input("Codebase Name:", placeholder="my-project")
-        
-        # Embedding options
+        file_count = st.number_input("Number of Files:", min_value=1, max_value=50, value=5)
         enable_embedding = st.checkbox("Create embeddings after README generation")
-        vector_name = st.text_input("Vector Name:", placeholder="custom-vector-name", disabled=not enable_embedding)
         
         submit = st.form_submit_button("🚀 Start README Vectorization")
     
@@ -144,7 +142,7 @@ def main():
             # Count total files and get files to process simultaneously
             with st.spinner("🔄 Scanning codebase for files..."):
                 total_files = count_total_files(codebase_name)
-                files = get_files(codebase_name)
+                files = get_files(codebase_name, file_count)
             
             # Display file count information
             col1, col2, col3 = st.columns(3)
@@ -185,13 +183,12 @@ def main():
             
             if enable_embedding:
                 st.write("**Step 4: Creating embeddings...**")
-                final_vector_name = vector_name if vector_name else f"{codebase_name}-readme-flow"
-                embed_result = embed_readme_docs(final_vector_name, readme_results)
+                embed_result = embed_readme_docs(codebase_name, readme_results)
                 
                 if embed_result.get('status') == 'error':
                     st.error(f"❌ Embedding failed: {embed_result.get('message')}")
                 else:
-                    st.success(f"✅ README documentation embedded successfully as '{final_vector_name}'")
+                    st.success(f"✅ README documentation embedded successfully as '{codebase_name}'")
             
             st.write("**Step 4: Cleaning up...**" if not enable_embedding else "**Step 5: Cleaning up...**")
             delete_repo(codebase_name)
