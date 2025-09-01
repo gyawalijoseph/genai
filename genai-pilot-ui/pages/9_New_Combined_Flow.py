@@ -172,7 +172,11 @@ def main():
                     st.code(file_data['content'], language="text")
                 
                 readme_result = call_llm(file_data['content'], file_data['path'])
-                readme_results.append(readme_result)
+                # Store both content and original path for embedding
+                readme_results.append({
+                    'content': readme_result,
+                    'original_path': file_data['path']
+                })
                 
                 with st.expander(f"Generated README", expanded=True):
                     st.markdown(readme_result)
