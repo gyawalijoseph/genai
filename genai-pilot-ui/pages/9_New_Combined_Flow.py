@@ -2,10 +2,13 @@ import streamlit as st
 import requests
 import json
 import os
+import sys
 from datetime import datetime
 
+sys.path.append('../genai-python-poc')
 from utils.githubUtil import commit_json
 from utils.metadataUtil import fetch_metadata
+from genai_python_poc.utilities.github_utils import clone_repo, delete_repo
 
 # Configuration
 LOCAL_BACKEND_URL = "http://localhost:5000"
@@ -73,9 +76,93 @@ def call_llm(system_prompt, user_prompt, content, step_name):
         log_error("llm_call_error", None, str(e), step_name, timestamp)
         return None
 
-def get_codebase_files(codebase_name, max_files=5):
-    """Get files from the codebase using vector search"""
-    st.write("**📁 Step 1: Getting files from codebase**")
+def get_codebase_files_from_git(codebase_name, max_files=5):
+    """Get files from the codebase by cloning from git and scanning actual files"""
+    st.write(f"**📁 Step 1: Getting {max_files} files from git repository**")
+    
+    # Try to clone and scan actual files
+    with st.spinner("🔄 Cloning repository and scanning for code files..."):
+        success = clone_repo(codebase_name)
+        
+        if success:
+            st.success("✅ Repository cloned successfully!")
+            
+            # Scan for all code files in the repository
+            all_file_paths = []
+            file_extensions = ['.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.h', '.sql', '.yaml', '.yml', '.json', '.go', '.rs', '.php', '.rb', '.cs']
+            
+            for root, dirs, files in os.walk("."):
+                # Skip hidden directories and common non-code directories
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv', 'env', 'build', 'dist', 'target']]
+                
+                for file in files:
+                    if any(file.endswith(ext) for ext in file_extensions):
+                        relative_path = os.path.relpath(os.path.join(root, file), ".")
+                        # Skip very large files and test files for initial processing
+                        try:
+                            file_size = os.path.getsize(os.path.join(root, file))
+                            if file_size < 50000 and not any(skip in relative_path.lower() for skip in ['test_', '_test', '.test.', 'spec.', '.spec.']):  # Skip files larger than 50KB and test files
+                                all_file_paths.append(relative_path)
+                        except:
+                            continue
+            
+            total_files = len(all_file_paths)
+            st.info(f"**📂 Found {total_files} code files in repository (excluding tests and large files)**")
+            
+            # Select files to process (first N files)
+            selected_files = all_file_paths[:max_files] if all_file_paths else []
+            
+            if not selected_files:
+                st.warning("⚠️ No suitable code files found in repository")
+                delete_repo(codebase_name)
+                return []
+            
+            st.info(f"**📄 Selected {len(selected_files)} files for processing:**")
+            for i, file in enumerate(selected_files, 1):
+                st.text(f"{i}. {file}")
+            
+            # Read selected files from local filesystem
+            all_files = []
+            for file_path in selected_files:
+                try:
+                    full_path = os.path.join(".", file_path)
+                    if os.path.exists(full_path):
+                        with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                        
+                        # Skip empty files
+                        if len(content.strip()) > 100:  # Only process files with substantial content
+                            file_data = {
+                                'metadata': {'source': file_path},
+                                'page_content': content,
+                                'similarity_score': 1.0  # Perfect match since we selected these files
+                            }
+                            all_files.append(file_data)
+                            st.success(f"✅ Read file: {file_path} ({len(content)} chars)")
+                        else:
+                            st.info(f"ℹ️ Skipped empty/small file: {file_path}")
+                    else:
+                        st.warning(f"⚠️ File not found: {file_path}")
+                except Exception as e:
+                    st.error(f"❌ Error reading {file_path}: {str(e)}")
+            
+            # Clean up cloned repository
+            delete_repo(codebase_name)
+            st.info("🧹 Cleaned up cloned repository")
+            
+            if all_files:
+                st.success(f"✅ **Retrieved {len(all_files)} files from git repository '{codebase_name}'** (out of {total_files} total files)")
+                return all_files
+            else:
+                st.error("❌ **No files could be read from the repository**")
+                return []
+        else:
+            st.error("❌ **Failed to clone repository - falling back to vector search**")
+            return get_codebase_files_vector_search(codebase_name, max_files)
+
+def get_codebase_files_vector_search(codebase_name, max_files=5):
+    """Get files from the codebase using vector search (fallback method)"""
+    st.write("**📁 Using vector search as fallback**")
     
     url = f"{LOCAL_BACKEND_URL}{VECTOR_SEARCH_ENDPOINT}"
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -135,6 +222,13 @@ def get_codebase_files(codebase_name, max_files=5):
     else:
         st.error(f"❌ **No files found in codebase '{codebase_name}'**")
         return []
+
+def get_codebase_files(codebase_name, max_files=5, use_git=True):
+    """Get files from the codebase - either from git or vector search"""
+    if use_git:
+        return get_codebase_files_from_git(codebase_name, max_files)
+    else:
+        return get_codebase_files_vector_search(codebase_name, max_files)
 
 def convert_code_to_readme(code_snippet, file_source):
     """Convert code snippet to README format using LLM"""
@@ -334,7 +428,7 @@ def main():
         display_error_logs()
     
     # Information about the new approach
-    st.info("🧠 **New Approach**: This flow processes 5 files from your codebase, converts each to README format using LLM, then analyzes for database information. No embedding required - direct LLM processing only.")
+    st.info("🧠 **New Approach**: This flow scans your actual codebase files, converts each to README format using LLM, then analyzes for database information. Test with a small number of files first to evaluate README conversion quality before processing the entire codebase.")
     
     # Main form
     with st.form("new_flow_form"):
@@ -350,23 +444,23 @@ def main():
             max_files = st.number_input(
                 "📊 Number of Files to Process:",
                 min_value=1,
-                max_value=10,
-                value=5,
-                help="Maximum number of files to retrieve and process"
+                max_value=100,
+                value=10,
+                help="Number of files to retrieve and process from the codebase. Start with a smaller number to test README conversion quality."
             )
         
         with col2:
             st.write("**🔄 Processing Flow:**")
-            st.write("1. 📁 Get files from codebase using vector search")
+            st.write("1. 📁 Scan actual codebase files (.py, .js, .ts, etc.)")
             st.write("2. 📝 Convert each file to README format using LLM")
             st.write("3. 🔍 Analyze README content with LLM calls:")
             st.write("   - Database presence check")
-            st.write("   - Database types extraction")
+            st.write("   - Database types extraction") 
             st.write("   - SQL queries extraction")
             st.write("   - APIs/interfaces extraction")
             st.write("4. 📊 Display structured results")
             
-            st.info("💡 **Note**: This will process up to 5 diverse files from your codebase automatically.")
+            st.info("💡 **Testing Approach**: Start with 5-10 files to evaluate README conversion quality, then scale up once satisfied with results.")
         
         submit_button = st.form_submit_button(
             '🚀 Start Multi-File README Processing',
