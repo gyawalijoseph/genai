@@ -36,6 +36,26 @@ def delete_repo(codebase):
     except Exception as e:
         st.error(f"❌ Error deleting repo: {e}")
 
+def count_total_files(codebase):
+    """Count total code files in the repository"""
+    file_extensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.sql']
+    total_count = 0
+    
+    for root, dirs, filenames in os.walk(codebase):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        
+        for filename in filenames:
+            if any(filename.endswith(ext) for ext in file_extensions):
+                file_path = os.path.join(root, filename)
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    if len(content.strip()) > 100:  # Skip small files
+                        total_count += 1
+                except:
+                    continue
+    return total_count
+
 def get_files(codebase):
     """Get 5 code files from cloned repository"""
     file_extensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.sql']
@@ -94,9 +114,21 @@ def main():
         if clone_repo(codebase_name):
             st.success("✅ Repository cloned")
             
-            st.write("**Step 2: Getting files...**")
-            files = get_files(codebase_name)
-            st.write(f"Found {len(files)} files to process")
+            st.write("**Step 2: Analyzing codebase...**")
+            
+            # Count total files and get files to process simultaneously
+            with st.spinner("🔄 Scanning codebase for files..."):
+                total_files = count_total_files(codebase_name)
+                files = get_files(codebase_name)
+            
+            # Display file count information
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📊 Total Code Files", total_files)
+            with col2:
+                st.metric("🎯 Processing", len(files))
+            with col3:
+                st.metric("📈 Coverage", f"{len(files)/total_files*100:.1f}%" if total_files > 0 else "0%")
             
             st.write("**Step 3: Generating README documentation with LLM...**")
             
