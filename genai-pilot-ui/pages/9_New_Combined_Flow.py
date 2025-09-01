@@ -7,6 +7,7 @@ from git import Repo
 # Configuration
 LOCAL_BACKEND_URL = "http://localhost:5000"
 LLM_API_ENDPOINT = "/LLM-API"
+EMBED_API_ENDPOINT = "/embed"
 HEADERS = {"Content-Type": "application/json"}
 
 # Hardcoded PAT - Replace with your actual token
@@ -101,12 +102,36 @@ def call_llm(content, file_path):
         except Exception as e:
             return f"Error: {str(e)}"
 
+def embed_readme_docs(vector_name, readme_outputs):
+    """Embed the generated README documentation"""
+    url = f"{LOCAL_BACKEND_URL}{EMBED_API_ENDPOINT}"
+    payload = {
+        "codebase": vector_name,
+        "external": False
+    }
+    
+    with st.spinner(f"🔄 Embedding README documentation as '{vector_name}'..."):
+        try:
+            response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
+            if response.status_code == 200:
+                result = response.json()
+                return result
+            else:
+                return {"status": "error", "message": f"HTTP {response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
 def main():
     st.title("📚 Vectorizing Codebase with README Documentation Flow")
     st.write("Convert 5 code files to README format using LLM for enhanced vectorization")
     
     with st.form("readme_vectorization_form"):
         codebase_name = st.text_input("Codebase Name:", placeholder="my-project")
+        
+        # Embedding options
+        enable_embedding = st.checkbox("Create embeddings after README generation")
+        vector_name = st.text_input("Vector Name:", placeholder="custom-vector-name", disabled=not enable_embedding)
+        
         submit = st.form_submit_button("🚀 Start README Vectorization")
     
     if submit and codebase_name:
@@ -135,6 +160,7 @@ def main():
             # Progress bar for overall process
             progress_bar = st.progress(0)
             status_text = st.empty()
+            readme_results = []
             
             for i, file_data in enumerate(files, 1):
                 # Update progress
@@ -148,6 +174,7 @@ def main():
                     st.code(file_data['content'], language="text")
                 
                 readme_result = call_llm(file_data['content'], file_data['path'])
+                readme_results.append(readme_result)
                 
                 with st.expander(f"Generated README", expanded=True):
                     st.markdown(readme_result)
@@ -156,7 +183,17 @@ def main():
             progress_bar.progress(1.0)
             status_text.text("✅ All files processed successfully!")
             
-            st.write("**Step 4: Cleaning up...**")
+            if enable_embedding:
+                st.write("**Step 4: Creating embeddings...**")
+                final_vector_name = vector_name if vector_name else f"{codebase_name}-readme-flow"
+                embed_result = embed_readme_docs(final_vector_name, readme_results)
+                
+                if embed_result.get('status') == 'error':
+                    st.error(f"❌ Embedding failed: {embed_result.get('message')}")
+                else:
+                    st.success(f"✅ README documentation embedded successfully as '{final_vector_name}'")
+            
+            st.write("**Step 4: Cleaning up...**" if not enable_embedding else "**Step 5: Cleaning up...**")
             delete_repo(codebase_name)
             st.success("🎉 README vectorization flow complete!")
 
