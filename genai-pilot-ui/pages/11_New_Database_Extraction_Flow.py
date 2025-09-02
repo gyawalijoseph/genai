@@ -65,47 +65,50 @@ def vector_search_single(vector_name, similarity_search_query, vector_results_co
         return {"results": [], "search_target": vector_name, "success": False}
 
 
-def robust_json_parse(text_output, file_source="unknown"):
-    """Robust JSON parsing with multiple fallback strategies"""
+def llm_json_parse(text_output, file_source="unknown"):
+    """LLM-assisted JSON parsing - let the LLM fix malformed JSON"""
     if not text_output or not text_output.strip():
         return None, "Empty output from LLM"
     
-    # Strategy 1: Direct JSON parsing
+    # First try direct JSON parsing
     try:
         return json.loads(text_output), None
     except json.JSONDecodeError:
         pass
     
-    # Strategy 2: Extract JSON from markdown code blocks
-    json_match = re.search(r'```(?:json)?\s*([^`]+)\s*```', text_output, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group(1).strip()), None
-        except json.JSONDecodeError:
-            pass
-    
-    # Strategy 3: Extract JSON-like content between { and }
-    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text_output, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group(0)), None
-        except json.JSONDecodeError:
-            pass
-    
-    # Strategy 4: Check for "no database information" responses
+    # Check if it's a "no information" response
     text_stripped = text_output.strip().lower()
     if ('no database' in text_stripped or 'no information found' in text_stripped):
         return None, "LLM indicated no database information found"
     
-    # Fallback structure
-    fallback_data = {
-        "source_file": file_source,
-        "raw_llm_output": text_output[:500] + "..." if len(text_output) > 500 else text_output,
-        "parsing_error": "Could not parse as valid JSON",
-        "extraction_status": "partial"
-    }
+    # Use LLM to fix the JSON if it's malformed
+    try:
+        fix_prompt = f"""The following text should be valid JSON but has formatting issues. Please return ONLY the corrected JSON with no additional text or explanation:
+
+{text_output}
+
+Return only valid JSON:"""
+        
+        url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
+        payload = {
+            "system_prompt": "You are a JSON formatting expert. Return only valid JSON, no explanations.",
+            "user_prompt": fix_prompt,
+            "codebase": ""
+        }
+        
+        response = requests.post(url, json=payload, headers=HEADERS, timeout=60)
+        if response.status_code == 200:
+            response_json = response.json()
+            fixed_output = response_json.get('output', '')
+            if fixed_output:
+                try:
+                    return json.loads(fixed_output), "Fixed by LLM"
+                except json.JSONDecodeError:
+                    pass
+    except Exception:
+        pass
     
-    return fallback_data, "Used fallback structure due to JSON parsing failure"
+    return None, f"Could not parse JSON from: {text_output[:200]}..."
 
 
 def extract_database_information_from_embeddings(data, system_prompt, vector_query):
@@ -224,8 +227,8 @@ Reply with only the JSON. Make sure it's a valid JSON."""
                         st.warning("⚠️ **No database information found in this README**")
                         continue
 
-                    # Parse JSON response
-                    json_document, parse_error = robust_json_parse(output, file_source)
+                    # Parse JSON response using LLM assistance
+                    json_document, parse_error = llm_json_parse(output, file_source)
                     
                     if json_document is None:
                         if "no database information found" in parse_error:
@@ -278,124 +281,96 @@ def validate_sql_basic(query):
     return False
 
 
-def transform_database_data_for_final_output(db_info_list, all_vector_results):
-    """Transform extracted database data into final structured format"""
-    st.write("🏗️ **Building final database structure from vector embeddings data...**")
-    
-    final_output = {
-        "Table Information": [],
-        "SQL_QUERIES": [],
-        "Invalid_SQL_Queries": []
-    }
+def llm_transform_database_data(db_info_list, all_vector_results, system_prompt):
+    """Use LLM to transform extracted database data into final structured format"""
+    st.write("🏗️ **Using LLM to build final database structure from extracted data...**")
     
     if not db_info_list:
         st.warning("⚠️ **No database information to process**")
-        return final_output
+        return {"Database Information": {}}
     
-    st.info(f"**🔢 Processing {len(db_info_list)} extracted database entries from vector embeddings**")
+    st.info(f"**🔢 Processing {len(db_info_list)} extracted database entries using LLM transformation**")
     
-    for i, db_entry in enumerate(db_info_list):
-        if not isinstance(db_entry, dict):
-            st.warning(f"⚠️ **Entry {i+1} is not a dictionary, skipping**")
-            continue
+    # Combine all extracted data for LLM processing
+    combined_data = {
+        "extracted_entries": db_info_list,
+        "source_files": []
+    }
+    
+    # Add source file information
+    for i, result in enumerate(all_vector_results):
+        if i < len(db_info_list):
+            combined_data["source_files"].append({
+                "index": i,
+                "source": result.get('metadata', {}).get('source', f'unknown_{i}'),
+                "similarity_score": result.get('similarity_score', 0)
+            })
+    
+    # Use LLM to structure the final output
+    transformation_prompt = """Given the extracted Couchbase/NoSQL database information below, create a comprehensive final database specification. 
+
+ONLY include information that was actually found in the extracted data. Do not add placeholder or dummy data.
+
+Structure the output as JSON with these sections:
+1. "Buckets_and_Collections": Only list actual bucket and collection names found
+2. "Queries": Only include actual N1QL/SQL queries found  
+3. "Document_Types": Only include actual document types/schemas found
+4. "Indexes": Only include actual index information found
+5. "SDK_Operations": Only include actual SDK operations found
+6. "Connection_Details": Only include actual connection information found
+
+If a section has no actual data, omit it entirely or set it to an empty array/object.
+
+Extracted data to process:"""
+    
+    try:
+        url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
+        payload = {
+            "system_prompt": system_prompt + " Focus on creating accurate final output with only real extracted data.",
+            "user_prompt": transformation_prompt,
+            "codebase": json.dumps(combined_data, indent=2)
+        }
         
-        source_file = f"vector_embeddings_{i+1}.unknown"
-        if 'source_file' in db_entry:
-            source_file = db_entry['source_file']
-        elif len(all_vector_results) > i:
-            source_file = all_vector_results[i].get('metadata', {}).get('source', source_file)
+        with st.spinner("🔄 LLM is structuring the final database specification..."):
+            response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
         
-        st.markdown(f"### 🔍 **Processing Data from Vector Embeddings:** `{source_file}`")
-        
-        # Process Table Information
-        table_entry = {source_file: {}}
-        table_found = False
-        
-        for key, value in db_entry.items():
-            key_lower = key.lower()
+        if response.status_code == 200:
+            response_json = response.json()
+            output = response_json.get('output', '')
             
-            # Look for Couchbase-specific information (buckets, collections, document types)
-            if any(keyword in key_lower for keyword in ['bucket', 'collection', 'document', 'scope', 'table', 'schema', 'model', 'entity']):
-                if isinstance(value, str) and value.strip():
-                    item_name = value.strip()
-                    # Determine the type based on the key
-                    if 'bucket' in key_lower:
-                        item_type = "Couchbase Bucket"
-                    elif 'collection' in key_lower:
-                        item_type = "Couchbase Collection"
-                    elif 'scope' in key_lower:
-                        item_type = "Couchbase Scope"
-                    elif 'document' in key_lower:
-                        item_type = "Document Type"
-                    else:
-                        item_type = "Data Structure"
+            if output:
+                # Parse the LLM response
+                final_structure, parse_error = llm_json_parse(output, "final_transformation")
+                
+                if final_structure:
+                    st.success("✅ **LLM successfully structured the final database specification**")
                     
-                    table_entry[source_file][f"{item_name} ({item_type})"] = {
-                        "Field Information": [{"column_name": "couchbase_document_field", "data_type": "json", "CRUD": "CRUD"}]
-                    }
-                    table_found = True
-                    st.success(f"✅ **Found {item_type} '{item_name}' from README embeddings**")
-                elif isinstance(value, list):
-                    for item_name in value:
-                        if isinstance(item_name, str) and item_name.strip():
-                            item_type = "Couchbase Bucket" if 'bucket' in key_lower else "Couchbase Collection" if 'collection' in key_lower else "Data Structure"
-                            table_entry[source_file][f"{item_name} ({item_type})"] = {
-                                "Field Information": [{"column_name": "couchbase_document_field", "data_type": "json", "CRUD": "CRUD"}]
-                            }
-                    table_found = True
-                    st.success(f"✅ **Found {len(value)} {key} from README embeddings: {value}**")
-        
-        if table_found and table_entry[source_file]:
-            final_output["Table Information"].append(table_entry)
-        
-        # Process N1QL/SQL Queries
-        sql_found = False
-        for key, value in db_entry.items():
-            if isinstance(value, str):
-                value_lower = value.lower()
-                # Include N1QL and Couchbase-specific operations
-                if any(keyword in value_lower for keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop', 'upsert', 'merge', 'n1ql', 'from bucket', 'use keys']):
-                    cleaned_query = value.strip()
-                    if len(cleaned_query) > 10:
-                        # Check if it's N1QL or regular SQL
-                        query_type = "N1QL" if any(n1ql_term in value_lower for n1ql_term in ['n1ql', 'bucket', 'use keys', 'upsert', 'merge']) else "SQL"
-                        final_output["SQL_QUERIES"].append(f"-- {query_type} Query\n{cleaned_query}")
-                        st.success(f"✅ **Found valid {query_type} query from README embeddings:**")
-                        st.code(cleaned_query, language="sql")
-                        sql_found = True
-                    else:
-                        final_output["Invalid_SQL_Queries"].append({
-                            "source_file": source_file,
-                            "query": cleaned_query,
-                            "reason": "Query too short or incomplete"
-                        })
-                        st.warning(f"⚠️ **Found incomplete query**")
-            elif isinstance(value, list):
-                for item in value:
-                    if isinstance(item, str):
-                        item_lower = item.lower()
-                        if any(keyword in item_lower for keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop', 'upsert', 'merge', 'n1ql', 'from bucket', 'use keys']):
-                            cleaned_query = item.strip()
-                            if len(cleaned_query) > 10:
-                                query_type = "N1QL" if any(n1ql_term in item_lower for n1ql_term in ['n1ql', 'bucket', 'use keys', 'upsert', 'merge']) else "SQL"
-                                final_output["SQL_QUERIES"].append(f"-- {query_type} Query\n{cleaned_query}")
-                                st.success(f"✅ **Found valid {query_type} query from list:**")
-                                st.code(cleaned_query, language="sql")
-                                sql_found = True
-        
-        if not sql_found:
-            st.info(f"ℹ️ **No N1QL/SQL queries found in README embeddings data for {source_file}**")
-    
-    # Summary
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Tables Found", len(final_output["Table Information"]))
-    with col2:
-        st.metric("Valid SQL Queries", len(final_output["SQL_QUERIES"]))
-    with col3:
-        st.metric("Invalid SQL Queries", len(final_output["Invalid_SQL_Queries"]))
-    
-    return final_output
+                    # Display what was actually found
+                    for section, data in final_structure.items():
+                        if data:  # Only show sections with actual data
+                            st.write(f"**📋 {section.replace('_', ' ')}:** Found actual data")
+                            try:
+                                if isinstance(data, list) and len(data) > 0:
+                                    st.write(f"- {len(data)} items found")
+                                elif isinstance(data, dict) and len(data) > 0:
+                                    st.write(f"- {len(data)} entries found")
+                            except:
+                                pass
+                    
+                    return {"Database Information": final_structure}
+                else:
+                    st.error(f"❌ **LLM transformation failed:** {parse_error}")
+                    return {"Database Information": {"error": "LLM transformation failed"}}
+            else:
+                st.error("❌ **No output from LLM transformation**")
+                return {"Database Information": {"error": "No LLM output"}}
+        else:
+            st.error(f"❌ **LLM API error:** HTTP {response.status_code}")
+            return {"Database Information": {"error": f"HTTP {response.status_code}"}}
+            
+    except Exception as e:
+        st.error(f"❌ **Exception during LLM transformation:** {str(e)}")
+        return {"Database Information": {"error": str(e)}}
 
 
 def commit_json_to_github(vector_name, json_data):
@@ -448,22 +423,31 @@ def main():
         with col2:
             vector_results_count = st.number_input(
                 '📊 Max Results Count:',
-                value=15,
+                value=50,
                 min_value=1,
-                max_value=50,
-                help="Maximum number of results from vector search"
+                max_value=1000,
+                help="Maximum number of results from vector search (set to 1000 for whole codebase)"
             )
             
             similarity_threshold = st.slider(
                 '🎯 Similarity Threshold:',
                 min_value=0.0,
                 max_value=1.0,
-                value=0.4,
+                value=0.3,
                 step=0.05,
-                help="Filter out results below this similarity score"
+                help="Filter out results below this similarity score (lower = more comprehensive)"
+            )
+            
+            process_whole_codebase = st.checkbox(
+                "🌐 Process Whole Codebase",
+                value=False,
+                help="Process all available vector results (sets count to 1000 and threshold to 0.1)"
             )
 
-        st.info("🔄 **Workflow:** Search README Vector Embeddings → Extract Database Info → Generate Final Spec")
+        st.info("🔄 **Enhanced LLM Workflow:** Search Vector Embeddings → LLM Extracts Data → LLM Structures Final Spec")
+        
+        if process_whole_codebase:
+            st.warning("⚡ **Whole Codebase Mode:** This will process many files and may take longer but provides comprehensive coverage")
 
         submit_button = st.form_submit_button(
             '🚀 Start Database Extraction from Vector Embeddings',
@@ -481,6 +465,13 @@ def main():
                 # Step 1: Vector search on existing embeddings
                 st.subheader("🔍 Step 1: Vector Search on README Embeddings")
                 
+                # Adjust parameters for whole codebase processing
+                if process_whole_codebase:
+                    st.info("🌐 **Whole codebase processing enabled** - using expanded search parameters")
+                    vector_results_count = 1000
+                    similarity_threshold = 0.1
+                    st.write(f"**Adjusted parameters:** Count: {vector_results_count}, Threshold: {similarity_threshold}")
+                
                 database_data = vector_search_single(vector_name, database_vector_query, vector_results_count, similarity_threshold)
                 
                 if database_data and database_data['results']:
@@ -492,10 +483,10 @@ def main():
                     )
                     
                     if database_information:
-                        # Step 3: Transform to final format
-                        st.subheader("🏗️ Step 3: Final Structure Generation")
-                        final_database_info = transform_database_data_for_final_output(
-                            database_information, database_data['results']
+                        # Step 3: LLM-based final structure generation
+                        st.subheader("🏗️ Step 3: LLM-Based Final Structure Generation")
+                        final_database_info = llm_transform_database_data(
+                            database_information, database_data['results'], database_system_prompt
                         )
                         
                         # Get application metadata (try using the vector name as codebase)
@@ -514,17 +505,19 @@ def main():
                             metadata = {"error": f"Metadata extraction failed: {str(e)}"}
                             st.error(f"❌ **Metadata extraction failed:** {str(e)}")
                         
-                        # Prepare final results
+                        # Prepare final results with only actual data
                         final_results = {
                             "extraction_metadata": {
                                 "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                 "vector_database": vector_name,
-                                "extraction_type": "database_from_readme_vector_embeddings",
-                                "vector_results_found": len(database_data['results']),
-                                "database_entries_extracted": len(database_information)
+                                "extraction_type": "llm_based_couchbase_extraction",
+                                "vector_results_processed": len(database_data['results']),
+                                "database_entries_extracted": len(database_information),
+                                "whole_codebase_processed": process_whole_codebase,
+                                "similarity_threshold_used": similarity_threshold
                             },
                             "Application": metadata,
-                            "Database Information": final_database_info
+                            **final_database_info  # Merge the LLM-generated database info directly
                         }
                         
                         # Step 5: Display results
