@@ -9,8 +9,8 @@ from utils.githubUtil import commit_json
 from utils.metadataUtil import fetch_metadata
 
 # Dynamic configuration - can be modified for any codebase
-DEFAULT_DATABASE_SYSTEM_PROMPT = "You are an expert at analyzing code for database configurations, connections, queries, and data models."
-DEFAULT_DATABASE_VECTOR_QUERY = "database sql connection query schema table model"
+DEFAULT_DATABASE_SYSTEM_PROMPT = "You are an expert at analyzing code for NoSQL database configurations, particularly Couchbase. You understand buckets, collections, documents, N1QL queries, indexes, and Couchbase SDK operations."
+DEFAULT_DATABASE_VECTOR_QUERY = "couchbase bucket collection document n1ql query index cluster connection sdk nosql json"
 LOCAL_BACKEND_URL = "http://localhost:5000"
 LLM_API_ENDPOINT = "/LLM-API"
 HEADERS = {"Content-Type": "application/json"}
@@ -167,18 +167,23 @@ def extract_database_information_from_embeddings(data, system_prompt, vector_que
 
             # Database information detection
             st.write("**🔍 Step 1: Detecting Database Information from README Content**")
-            detection_prompt = """Given the provided README documentation content (which may contain database-focused information extracted from source code), identify if there are database-related configurations, connections, queries, schemas, or data models present? 
+            detection_prompt = """Given the provided README documentation content (which may contain database-focused information extracted from source code), identify if there are Couchbase or NoSQL database-related configurations, connections, queries, or data models present?
 
 If none, reply back with 'no database information found'. 
 
-If database information is found, extract it and organize into a JSON structure with appropriate keys such as:
-- database_type (e.g., MySQL, PostgreSQL, MongoDB)
-- connection_details 
-- table_names
-- queries
-- schemas
-- models
-- configurations
+If Couchbase/NoSQL database information is found, extract it and organize into a JSON structure with appropriate keys such as:
+- database_type (should be "Couchbase" or other NoSQL type)
+- cluster_connection (connection string, hosts, ports)
+- bucket_names (Couchbase buckets)
+- collection_names (collections within buckets)
+- scope_names (scopes if used)
+- n1ql_queries (N1QL query statements)
+- document_types (types of JSON documents stored)
+- indexes (GSI, primary indexes, etc.)
+- sdk_operations (get, upsert, insert, replace operations)
+- configurations (timeouts, security settings, etc.)
+
+Focus specifically on Couchbase terminology: buckets, collections, scopes, documents, N1QL, GSI indexes, cluster, SDK operations.
 
 Reply with only the JSON. Make sure it's a valid JSON."""
 
@@ -309,60 +314,77 @@ def transform_database_data_for_final_output(db_info_list, all_vector_results):
         for key, value in db_entry.items():
             key_lower = key.lower()
             
-            # Look for table-related information
-            if any(keyword in key_lower for keyword in ['table', 'schema', 'model', 'entity', 'collection']):
+            # Look for Couchbase-specific information (buckets, collections, document types)
+            if any(keyword in key_lower for keyword in ['bucket', 'collection', 'document', 'scope', 'table', 'schema', 'model', 'entity']):
                 if isinstance(value, str) and value.strip():
-                    table_name = value.strip()
-                    table_entry[source_file][table_name] = {
-                        "Field Information": [{"column_name": "extracted_from_readme_embeddings", "data_type": "string", "CRUD": "READ"}]
+                    item_name = value.strip()
+                    # Determine the type based on the key
+                    if 'bucket' in key_lower:
+                        item_type = "Couchbase Bucket"
+                    elif 'collection' in key_lower:
+                        item_type = "Couchbase Collection"
+                    elif 'scope' in key_lower:
+                        item_type = "Couchbase Scope"
+                    elif 'document' in key_lower:
+                        item_type = "Document Type"
+                    else:
+                        item_type = "Data Structure"
+                    
+                    table_entry[source_file][f"{item_name} ({item_type})"] = {
+                        "Field Information": [{"column_name": "couchbase_document_field", "data_type": "json", "CRUD": "CRUD"}]
                     }
                     table_found = True
-                    st.success(f"✅ **Found table '{table_name}' from README embeddings**")
+                    st.success(f"✅ **Found {item_type} '{item_name}' from README embeddings**")
                 elif isinstance(value, list):
-                    for table_name in value:
-                        if isinstance(table_name, str) and table_name.strip():
-                            table_entry[source_file][table_name] = {
-                                "Field Information": [{"column_name": "from_readme_embeddings", "data_type": "string", "CRUD": "READ"}]
+                    for item_name in value:
+                        if isinstance(item_name, str) and item_name.strip():
+                            item_type = "Couchbase Bucket" if 'bucket' in key_lower else "Couchbase Collection" if 'collection' in key_lower else "Data Structure"
+                            table_entry[source_file][f"{item_name} ({item_type})"] = {
+                                "Field Information": [{"column_name": "couchbase_document_field", "data_type": "json", "CRUD": "CRUD"}]
                             }
                     table_found = True
-                    st.success(f"✅ **Found {len(value)} tables from README embeddings: {value}**")
+                    st.success(f"✅ **Found {len(value)} {key} from README embeddings: {value}**")
         
         if table_found and table_entry[source_file]:
             final_output["Table Information"].append(table_entry)
         
-        # Process SQL Queries
+        # Process N1QL/SQL Queries
         sql_found = False
         for key, value in db_entry.items():
             if isinstance(value, str):
                 value_lower = value.lower()
-                if any(sql_keyword in value_lower for sql_keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop']):
+                # Include N1QL and Couchbase-specific operations
+                if any(keyword in value_lower for keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop', 'upsert', 'merge', 'n1ql', 'from bucket', 'use keys']):
                     cleaned_query = value.strip()
-                    if len(cleaned_query) > 10 and validate_sql_basic(cleaned_query):
-                        final_output["SQL_QUERIES"].append(cleaned_query)
-                        st.success(f"✅ **Found valid SQL query from README embeddings:**")
+                    if len(cleaned_query) > 10:
+                        # Check if it's N1QL or regular SQL
+                        query_type = "N1QL" if any(n1ql_term in value_lower for n1ql_term in ['n1ql', 'bucket', 'use keys', 'upsert', 'merge']) else "SQL"
+                        final_output["SQL_QUERIES"].append(f"-- {query_type} Query\n{cleaned_query}")
+                        st.success(f"✅ **Found valid {query_type} query from README embeddings:**")
                         st.code(cleaned_query, language="sql")
                         sql_found = True
                     else:
                         final_output["Invalid_SQL_Queries"].append({
                             "source_file": source_file,
                             "query": cleaned_query,
-                            "reason": "Invalid SQL syntax or too short"
+                            "reason": "Query too short or incomplete"
                         })
-                        st.warning(f"⚠️ **Found invalid SQL query**")
+                        st.warning(f"⚠️ **Found incomplete query**")
             elif isinstance(value, list):
                 for item in value:
                     if isinstance(item, str):
                         item_lower = item.lower()
-                        if any(sql_keyword in item_lower for sql_keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop']):
+                        if any(keyword in item_lower for keyword in ['select', 'insert', 'update', 'delete', 'create', 'drop', 'upsert', 'merge', 'n1ql', 'from bucket', 'use keys']):
                             cleaned_query = item.strip()
-                            if len(cleaned_query) > 10 and validate_sql_basic(cleaned_query):
-                                final_output["SQL_QUERIES"].append(cleaned_query)
-                                st.success(f"✅ **Found valid SQL query from list:**")
+                            if len(cleaned_query) > 10:
+                                query_type = "N1QL" if any(n1ql_term in item_lower for n1ql_term in ['n1ql', 'bucket', 'use keys', 'upsert', 'merge']) else "SQL"
+                                final_output["SQL_QUERIES"].append(f"-- {query_type} Query\n{cleaned_query}")
+                                st.success(f"✅ **Found valid {query_type} query from list:**")
                                 st.code(cleaned_query, language="sql")
                                 sql_found = True
         
         if not sql_found:
-            st.info(f"ℹ️ **No SQL queries found in README embeddings data for {source_file}**")
+            st.info(f"ℹ️ **No N1QL/SQL queries found in README embeddings data for {source_file}**")
     
     # Summary
     col1, col2, col3 = st.columns(3)
@@ -395,10 +417,10 @@ def main():
         layout="wide"
     )
 
-    st.title("🆕 Database Extraction from README Vector Embeddings")
-    st.markdown("**Extract database information from existing vector embeddings created via the Codebase → LLM → README → Vector flow**")
+    st.title("🆕 Couchbase Database Extraction from README Vector Embeddings")
+    st.markdown("**Extract Couchbase/NoSQL database information from existing vector embeddings created via the Codebase → LLM → README → Vector flow**")
 
-    st.info("💡 **This tool works with vector embeddings that were already created from README documentation generated by LLMs from your codebase.**")
+    st.info("💡 **This tool is optimized for Couchbase databases and works with vector embeddings that were already created from README documentation generated by LLMs from your codebase.**")
 
     with st.form("vector_database_extraction_form"):
         col1, col2 = st.columns(2)
