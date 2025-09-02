@@ -361,11 +361,99 @@ Extracted data to process:"""
                 "codebase": data_str
             }
             
+            # Show detailed request information for debugging
+            with st.expander(f"🔍 **Debug: Final Transformation Request Details** (Attempt {attempt + 1})", expanded=False):
+                st.write("**🌐 Request URL:**")
+                st.code(url, language="text")
+                
+                st.write("**📋 Request Headers:**")
+                st.code(json.dumps(HEADERS, indent=2), language="json")
+                
+                st.write("**🎯 System Prompt:**")
+                st.text_area("System Prompt", value=payload["system_prompt"], height=100, disabled=True, key=f"sys_prompt_{attempt}")
+                
+                st.write("**💬 User Prompt:**")
+                st.text_area("User Prompt", value=payload["user_prompt"], height=150, disabled=True, key=f"user_prompt_{attempt}")
+                
+                st.write("**📊 Codebase Data Size:**")
+                st.write(f"- **Characters:** {len(data_str):,}")
+                st.write(f"- **KB:** {len(data_str)/1024:.1f}")
+                st.write(f"- **MB:** {len(data_str)/(1024*1024):.2f}")
+                
+                st.write("**📁 Codebase Data Preview (First 1000 chars):**")
+                st.code(data_str[:1000] + "..." if len(data_str) > 1000 else data_str, language="json")
+                
+                st.write("**🔧 Full Request Payload:**")
+                st.code(json.dumps(payload, indent=2)[:2000] + "..." if len(json.dumps(payload)) > 2000 else json.dumps(payload, indent=2), language="json")
+                
+                # Potential firewall triggers
+                st.write("**🚨 Potential Firewall Triggers to Check:**")
+                suspicious_terms = []
+                payload_str = json.dumps(payload).lower()
+                
+                # Check for terms that might trigger security filters
+                security_terms = [
+                    'password', 'secret', 'token', 'key', 'auth', 'credential',
+                    'admin', 'root', 'sudo', 'exec', 'eval', 'shell',
+                    'injection', 'xss', 'script', 'exploit'
+                ]
+                
+                for term in security_terms:
+                    if term in payload_str:
+                        suspicious_terms.append(term)
+                
+                if suspicious_terms:
+                    st.warning(f"⚠️ **Found potentially flagged terms:** {', '.join(suspicious_terms)}")
+                else:
+                    st.success("✅ **No obvious security-related terms detected**")
+                
+                # Request size warnings
+                payload_size = len(json.dumps(payload))
+                if payload_size > 100000:  # 100KB
+                    st.error(f"🚨 **Large payload detected:** {payload_size:,} bytes - may exceed firewall limits")
+                elif payload_size > 50000:  # 50KB
+                    st.warning(f"⚠️ **Medium payload size:** {payload_size:,} bytes - monitor for limits")
+                else:
+                    st.info(f"ℹ️ **Payload size:** {payload_size:,} bytes")
+            
             # Increased timeout for large datasets
             timeout = 600 if len(db_info_list) > 20 else 300
             
             with st.spinner(f"🔄 LLM is structuring the final database specification... (Attempt {attempt + 1}/{max_retries})"):
                 response = requests.post(url, json=payload, headers=HEADERS, timeout=timeout)
+            
+            # Show detailed response information for debugging
+            with st.expander(f"🔍 **Debug: API Response Details** (Attempt {attempt + 1})", expanded=False):
+                st.write("**📡 Response Status:**")
+                st.code(f"HTTP {response.status_code}", language="text")
+                
+                st.write("**📋 Response Headers:**")
+                st.code(json.dumps(dict(response.headers), indent=2), language="json")
+                
+                st.write("**📄 Raw Response Text (First 2000 chars):**")
+                response_text = response.text
+                st.code(response_text[:2000] + "..." if len(response_text) > 2000 else response_text, language="text")
+                
+                st.write("**📊 Response Size:**")
+                st.write(f"- **Characters:** {len(response_text):,}")
+                st.write(f"- **KB:** {len(response_text)/1024:.1f}")
+                
+                # Try to parse response as JSON for better display
+                try:
+                    response_json = response.json()
+                    st.write("**🔧 Parsed JSON Response:**")
+                    st.code(json.dumps(response_json, indent=2)[:2000] + "..." if len(json.dumps(response_json)) > 2000 else json.dumps(response_json, indent=2), language="json")
+                except:
+                    st.write("**⚠️ Response is not valid JSON**")
+                
+                # Check for firewall-specific error messages
+                if response.status_code in [403, 406, 451, 502, 503]:
+                    st.error(f"🚨 **Firewall/Security Error Detected:** HTTP {response.status_code}")
+                    st.write("**Common causes:**")
+                    st.write("- Content contains flagged keywords")
+                    st.write("- Payload size exceeds limits")
+                    st.write("- Request rate limiting")
+                    st.write("- Security policy violation")
             
             if response.status_code == 200:
                 response_json = response.json()
