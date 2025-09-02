@@ -50,6 +50,12 @@ def vector_search_single(vector_name, similarity_search_query, vector_results_co
             st.info(f"ℹ️ **No results found in {vector_name}**")
             return {"results": [], "search_target": vector_name, "success": True}
 
+        # Debug: Show what the API actually returned
+        st.info(f"**🔍 API Response Debug:**")
+        st.write(f"- Requested: {vector_results_count} results")
+        st.write(f"- Actually returned: {len(data['results'])} results")
+        st.write(f"- Similarity threshold requested: {similarity_threshold}")
+        
         # Add search target info to each result
         for result in data['results']:
             result['search_target'] = vector_name
@@ -281,8 +287,8 @@ def validate_sql_basic(query):
     return False
 
 
-def llm_transform_database_data(db_info_list, all_vector_results, system_prompt):
-    """Use LLM to transform extracted database data into final structured format"""
+def llm_transform_database_data_with_retries(db_info_list, all_vector_results, system_prompt, max_retries=3):
+    """Use LLM to transform extracted database data with retries and error handling"""
     st.write("🏗️ **Using LLM to build final database structure from extracted data...**")
     
     if not db_info_list:
@@ -290,6 +296,15 @@ def llm_transform_database_data(db_info_list, all_vector_results, system_prompt)
         return {"Database Information": {}}
     
     st.info(f"**🔢 Processing {len(db_info_list)} extracted database entries using LLM transformation**")
+    
+    # Save progress to session state to prevent data loss
+    progress_key = "llm_transform_progress"
+    if progress_key not in st.session_state:
+        st.session_state[progress_key] = {
+            "db_info_list": db_info_list,
+            "all_vector_results": all_vector_results,
+            "timestamp": datetime.now().isoformat()
+        }
     
     # Combine all extracted data for LLM processing
     combined_data = {
@@ -323,54 +338,199 @@ If a section has no actual data, omit it entirely or set it to an empty array/ob
 
 Extracted data to process:"""
     
-    try:
-        url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
-        payload = {
-            "system_prompt": system_prompt + " Focus on creating accurate final output with only real extracted data.",
-            "user_prompt": transformation_prompt,
-            "codebase": json.dumps(combined_data, indent=2)
-        }
-        
-        with st.spinner("🔄 LLM is structuring the final database specification..."):
-            response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
-        
-        if response.status_code == 200:
-            response_json = response.json()
-            output = response_json.get('output', '')
+    # Retry logic with exponential backoff
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8 seconds
+                st.info(f"🔄 **Retry attempt {attempt + 1}/{max_retries}** (waiting {wait_time}s before retry)")
+                import time
+                time.sleep(wait_time)
             
-            if output:
-                # Parse the LLM response
-                final_structure, parse_error = llm_json_parse(output, "final_transformation")
+            url = f"{LOCAL_BACKEND_URL}{LLM_API_ENDPOINT}"
+            
+            # Split data if it's too large (might cause API errors)
+            data_str = json.dumps(combined_data, indent=2)
+            if len(data_str) > 50000:  # If data is very large
+                st.warning(f"⚠️ **Large dataset detected** ({len(data_str)} chars) - using chunked processing")
+                return llm_transform_chunked_data(db_info_list, all_vector_results, system_prompt)
+            
+            payload = {
+                "system_prompt": system_prompt + " Focus on creating accurate final output with only real extracted data.",
+                "user_prompt": transformation_prompt,
+                "codebase": data_str
+            }
+            
+            # Increased timeout for large datasets
+            timeout = 600 if len(db_info_list) > 20 else 300
+            
+            with st.spinner(f"🔄 LLM is structuring the final database specification... (Attempt {attempt + 1}/{max_retries})"):
+                response = requests.post(url, json=payload, headers=HEADERS, timeout=timeout)
+            
+            if response.status_code == 200:
+                response_json = response.json()
+                output = response_json.get('output', '')
                 
-                if final_structure:
-                    st.success("✅ **LLM successfully structured the final database specification**")
+                if output:
+                    # Parse the LLM response
+                    final_structure, parse_error = llm_json_parse(output, "final_transformation")
                     
-                    # Display what was actually found
-                    for section, data in final_structure.items():
-                        if data:  # Only show sections with actual data
-                            st.write(f"**📋 {section.replace('_', ' ')}:** Found actual data")
-                            try:
-                                if isinstance(data, list) and len(data) > 0:
-                                    st.write(f"- {len(data)} items found")
-                                elif isinstance(data, dict) and len(data) > 0:
-                                    st.write(f"- {len(data)} entries found")
-                            except:
-                                pass
-                    
-                    return {"Database Information": final_structure}
+                    if final_structure:
+                        st.success("✅ **LLM successfully structured the final database specification**")
+                        
+                        # Clear progress since we succeeded
+                        if progress_key in st.session_state:
+                            del st.session_state[progress_key]
+                        
+                        # Display what was actually found
+                        for section, data in final_structure.items():
+                            if data:  # Only show sections with actual data
+                                st.write(f"**📋 {section.replace('_', ' ')}:** Found actual data")
+                                try:
+                                    if isinstance(data, list) and len(data) > 0:
+                                        st.write(f"- {len(data)} items found")
+                                    elif isinstance(data, dict) and len(data) > 0:
+                                        st.write(f"- {len(data)} entries found")
+                                except:
+                                    pass
+                        
+                        return {"Database Information": final_structure}
+                    else:
+                        if attempt == max_retries - 1:  # Last attempt
+                            st.error(f"❌ **LLM transformation failed after {max_retries} attempts:** {parse_error}")
+                            return create_fallback_structure(db_info_list)
+                        else:
+                            st.warning(f"⚠️ **Parse error on attempt {attempt + 1}:** {parse_error} - Retrying...")
+                            continue
                 else:
-                    st.error(f"❌ **LLM transformation failed:** {parse_error}")
-                    return {"Database Information": {"error": "LLM transformation failed"}}
+                    if attempt == max_retries - 1:
+                        st.error("❌ **No output from LLM transformation after all retries**")
+                        return create_fallback_structure(db_info_list)
+                    else:
+                        st.warning(f"⚠️ **No output on attempt {attempt + 1}** - Retrying...")
+                        continue
+                        
+            elif response.status_code == 429:  # Rate limit
+                if attempt == max_retries - 1:
+                    st.error("❌ **Rate limited after all retries**")
+                    return create_fallback_structure(db_info_list)
+                else:
+                    st.warning(f"⚠️ **Rate limited on attempt {attempt + 1}** - Will retry with longer backoff...")
+                    import time
+                    time.sleep(10)  # Extra wait for rate limits
+                    continue
+                    
             else:
-                st.error("❌ **No output from LLM transformation**")
-                return {"Database Information": {"error": "No LLM output"}}
-        else:
-            st.error(f"❌ **LLM API error:** HTTP {response.status_code}")
-            return {"Database Information": {"error": f"HTTP {response.status_code}"}}
-            
-    except Exception as e:
-        st.error(f"❌ **Exception during LLM transformation:** {str(e)}")
-        return {"Database Information": {"error": str(e)}}
+                if attempt == max_retries - 1:
+                    st.error(f"❌ **LLM API error after {max_retries} attempts:** HTTP {response.status_code}")
+                    st.error(f"**Response:** {response.text}")
+                    return create_fallback_structure(db_info_list)
+                else:
+                    st.warning(f"⚠️ **API error on attempt {attempt + 1}:** HTTP {response.status_code} - Retrying...")
+                    continue
+                    
+        except requests.exceptions.Timeout:
+            if attempt == max_retries - 1:
+                st.error(f"❌ **Request timeout after {max_retries} attempts**")
+                return create_fallback_structure(db_info_list)
+            else:
+                st.warning(f"⚠️ **Timeout on attempt {attempt + 1}** - Retrying...")
+                continue
+                
+        except requests.exceptions.ConnectionError:
+            if attempt == max_retries - 1:
+                st.error(f"❌ **Connection error after {max_retries} attempts**")
+                return create_fallback_structure(db_info_list)
+            else:
+                st.warning(f"⚠️ **Connection error on attempt {attempt + 1}** - Retrying...")
+                continue
+                
+        except Exception as e:
+            if attempt == max_retries - 1:
+                st.error(f"❌ **Exception after {max_retries} attempts:** {str(e)}")
+                return create_fallback_structure(db_info_list)
+            else:
+                st.warning(f"⚠️ **Exception on attempt {attempt + 1}:** {str(e)} - Retrying...")
+                continue
+    
+    # Should never reach here, but just in case
+    return create_fallback_structure(db_info_list)
+
+
+def create_fallback_structure(db_info_list):
+    """Create a fallback structure when LLM transformation fails"""
+    st.warning("🛡️ **Using fallback structure generation** - preserving extracted data without LLM transformation")
+    
+    fallback_structure = {
+        "Raw_Extracted_Data": db_info_list,
+        "Extraction_Status": "LLM transformation failed, raw data preserved",
+        "Timestamp": datetime.now().isoformat(),
+        "Note": "Manual review required - LLM transformation could not complete"
+    }
+    
+    # Try to extract some basic info without LLM
+    buckets = []
+    queries = []
+    
+    for entry in db_info_list:
+        if isinstance(entry, dict):
+            for key, value in entry.items():
+                if 'bucket' in key.lower() and isinstance(value, (str, list)):
+                    if isinstance(value, list):
+                        buckets.extend(value)
+                    else:
+                        buckets.append(value)
+                        
+                if any(q_word in str(value).lower() for q_word in ['select', 'insert', 'n1ql', 'query']) and len(str(value)) > 10:
+                    queries.append(str(value))
+    
+    if buckets:
+        fallback_structure["Buckets_Found"] = list(set(buckets))
+    if queries:
+        fallback_structure["Queries_Found"] = queries
+    
+    return {"Database Information": fallback_structure}
+
+
+def llm_transform_chunked_data(db_info_list, all_vector_results, system_prompt):
+    """Handle very large datasets by processing in chunks"""
+    st.info("🔄 **Processing large dataset in chunks to avoid API limits**")
+    
+    chunk_size = 10  # Process 10 entries at a time
+    chunks = [db_info_list[i:i + chunk_size] for i in range(0, len(db_info_list), chunk_size)]
+    
+    final_results = {
+        "Buckets_and_Collections": [],
+        "Queries": [],
+        "Document_Types": [],
+        "Indexes": [],
+        "SDK_Operations": [],
+        "Connection_Details": []
+    }
+    
+    for i, chunk in enumerate(chunks, 1):
+        st.info(f"📦 **Processing chunk {i}/{len(chunks)}** ({len(chunk)} entries)")
+        
+        # Process this chunk
+        chunk_results = llm_transform_database_data_with_retries(chunk, all_vector_results[:(len(chunk))], system_prompt, max_retries=2)
+        
+        # Merge results
+        if "Database Information" in chunk_results:
+            chunk_data = chunk_results["Database Information"]
+            for section, data in chunk_data.items():
+                if section in final_results and data:
+                    if isinstance(data, list):
+                        final_results[section].extend(data)
+                    elif isinstance(data, dict):
+                        if isinstance(final_results[section], list):
+                            final_results[section].append(data)
+                        elif isinstance(final_results[section], dict):
+                            final_results[section].update(data)
+    
+    # Remove empty sections
+    final_results = {k: v for k, v in final_results.items() if v}
+    
+    return {"Database Information": final_results}
 
 
 def commit_json_to_github(vector_name, json_data):
@@ -454,6 +614,25 @@ def main():
             use_container_width=True
         )
 
+    # Check for saved progress
+    progress_key = "llm_transform_progress"
+    if progress_key in st.session_state:
+        st.warning("⚠️ **Previous session data found** - you can recover from a previous run that may have failed")
+        if st.button("🔄 Use Saved Progress"):
+            st.info("Using saved database extraction data...")
+            saved_data = st.session_state[progress_key]
+            final_database_info = llm_transform_database_data_with_retries(
+                saved_data["db_info_list"], 
+                saved_data["all_vector_results"], 
+                database_system_prompt
+            )
+            if final_database_info:
+                st.json(final_database_info)
+        if st.button("🗑️ Clear Saved Progress"):
+            del st.session_state[progress_key]
+            st.success("Saved progress cleared")
+            st.rerun()
+
     if submit_button:
         if not vector_name:
             st.error("❌ Please enter a vector database name")
@@ -472,6 +651,14 @@ def main():
                     similarity_threshold = 0.1
                     st.write(f"**Adjusted parameters:** Count: {vector_results_count}, Threshold: {similarity_threshold}")
                 
+                # Debug: Show what parameters are actually being used
+                st.info(f"**🔍 Search Parameters Being Sent:**")
+                st.write(f"- Vector Name: `{vector_name}`")
+                st.write(f"- Query: `{database_vector_query}`") 
+                st.write(f"- Results Count: `{vector_results_count}`")
+                st.write(f"- Similarity Threshold: `{similarity_threshold}`")
+                st.write(f"- Whole Codebase Mode: `{process_whole_codebase}`")
+                
                 database_data = vector_search_single(vector_name, database_vector_query, vector_results_count, similarity_threshold)
                 
                 if database_data and database_data['results']:
@@ -483,9 +670,9 @@ def main():
                     )
                     
                     if database_information:
-                        # Step 3: LLM-based final structure generation
+                        # Step 3: LLM-based final structure generation with retries
                         st.subheader("🏗️ Step 3: LLM-Based Final Structure Generation")
-                        final_database_info = llm_transform_database_data(
+                        final_database_info = llm_transform_database_data_with_retries(
                             database_information, database_data['results'], database_system_prompt
                         )
                         
