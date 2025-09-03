@@ -202,9 +202,129 @@ Reply with only the JSON. Make sure it's a valid JSON."""
                 "codebase": codebase
             }
 
+            # Show detailed LLM API call information for debugging
+            with st.expander(f"🔍 **Debug: Individual LLM API Call #{i}** - {os.path.basename(file_source)}", expanded=False):
+                st.write("**🌐 Request URL:**")
+                st.code(url, language="text")
+                
+                st.write("**📋 Request Headers:**")
+                st.code(json.dumps(HEADERS, indent=2), language="json")
+                
+                st.write("**🎯 System Prompt Being Sent:**")
+                st.text_area(f"System Prompt {i}", value=payload["system_prompt"], height=120, disabled=True, key=f"sys_prompt_individual_{i}")
+                
+                st.write("**💬 User Prompt Being Sent:**")
+                st.text_area(f"User Prompt {i}", value=payload["user_prompt"], height=200, disabled=True, key=f"user_prompt_individual_{i}")
+                
+                st.write("**📄 Codebase Content Being Sent:**")
+                st.write(f"**📊 Size:** {len(codebase):,} characters ({len(codebase)/1024:.1f} KB)")
+                
+                # Show first and last parts of codebase content
+                if len(codebase) > 2000:
+                    st.write("**📁 Codebase Content (First 1000 chars):**")
+                    st.code(codebase[:1000] + "\n\n... [CONTENT CONTINUES] ...", language="text")
+                    st.write("**📁 Codebase Content (Last 1000 chars):**")
+                    st.code("... [CONTENT CONTINUES] ...\n\n" + codebase[-1000:], language="text")
+                else:
+                    st.write("**📁 Complete Codebase Content:**")
+                    st.code(codebase, language="text")
+                
+                st.write("**🔧 Complete Request Payload:**")
+                # Show truncated payload to avoid UI overload
+                full_payload_str = json.dumps(payload, indent=2)
+                if len(full_payload_str) > 3000:
+                    st.code(full_payload_str[:1500] + "\n\n... [PAYLOAD CONTINUES] ...\n\n" + full_payload_str[-1500:], language="json")
+                else:
+                    st.code(full_payload_str, language="json")
+                
+                # Security analysis for this specific call
+                st.write("**🚨 Security Analysis for This Call:**")
+                payload_str = json.dumps(payload).lower()
+                
+                # Extended security terms that might trigger firewall
+                security_terms = [
+                    'password', 'secret', 'token', 'key', 'auth', 'credential', 'login',
+                    'admin', 'root', 'sudo', 'exec', 'eval', 'shell', 'command',
+                    'injection', 'xss', 'script', 'exploit', 'attack', 'hack',
+                    'database', 'connection', 'query', 'select', 'insert', 'update', 'delete',
+                    'api_key', 'access_token', 'bearer', 'oauth', 'jwt', 'session'
+                ]
+                
+                found_terms = [term for term in security_terms if term in payload_str]
+                
+                if found_terms:
+                    st.warning(f"⚠️ **Security-related terms found:** {', '.join(found_terms[:10])}{'...' if len(found_terms) > 10 else ''}")
+                    st.write(f"**Total flagged terms:** {len(found_terms)}")
+                else:
+                    st.success("✅ **No obvious security terms detected**")
+                
+                # Payload size analysis
+                payload_size = len(json.dumps(payload))
+                if payload_size > 100000:  # 100KB
+                    st.error(f"🚨 **Very large payload:** {payload_size:,} bytes - likely to be rejected")
+                elif payload_size > 50000:  # 50KB
+                    st.warning(f"⚠️ **Large payload:** {payload_size:,} bytes - may cause issues")
+                else:
+                    st.info(f"ℹ️ **Payload size:** {payload_size:,} bytes - should be fine")
+
             with st.spinner(f"🔄 Detecting database info in {file_source}..."):
                 try:
                     response = requests.post(url, json=payload, headers=HEADERS, timeout=300)
+
+                    # Show detailed response for each individual LLM call
+                    with st.expander(f"📡 **Debug: Individual LLM Response #{i}** - {os.path.basename(file_source)}", expanded=False):
+                        st.write("**📡 Response Status:**")
+                        st.code(f"HTTP {response.status_code}", language="text")
+                        
+                        st.write("**📋 Response Headers:**")
+                        response_headers = dict(response.headers)
+                        st.code(json.dumps(response_headers, indent=2), language="json")
+                        
+                        st.write("**📄 Raw Response Text:**")
+                        response_text = response.text
+                        if len(response_text) > 3000:
+                            st.code(response_text[:1500] + "\n\n... [RESPONSE CONTINUES] ...\n\n" + response_text[-1500:], language="text")
+                        else:
+                            st.code(response_text, language="text")
+                        
+                        st.write("**📊 Response Analysis:**")
+                        st.write(f"- **Size:** {len(response_text):,} characters ({len(response_text)/1024:.1f} KB)")
+                        
+                        # Try to parse and show JSON structure
+                        try:
+                            if response.status_code == 200:
+                                response_json = response.json()
+                                st.write("**🔧 Parsed Response JSON:**")
+                                st.code(json.dumps(response_json, indent=2)[:2000] + "..." if len(json.dumps(response_json)) > 2000 else json.dumps(response_json, indent=2), language="json")
+                                
+                                # Show the actual LLM output if present
+                                llm_output = response_json.get('output', '')
+                                if llm_output:
+                                    st.write("**🤖 LLM Output:**")
+                                    st.code(llm_output[:1000] + "..." if len(llm_output) > 1000 else llm_output, language="text")
+                        except json.JSONDecodeError:
+                            st.warning("⚠️ **Response is not valid JSON**")
+                        
+                        # Firewall/security error detection
+                        if response.status_code in [403, 404, 406, 451, 502, 503]:
+                            st.error(f"🚨 **Security/Firewall Error:** HTTP {response.status_code}")
+                            
+                            # Look for specific firewall indicators in response
+                            firewall_indicators = [
+                                'blocked', 'forbidden', 'denied', 'rejected', 'firewall',
+                                'security', 'policy', 'violation', 'restricted', 'filtered'
+                            ]
+                            
+                            response_lower = response_text.lower()
+                            found_indicators = [ind for ind in firewall_indicators if ind in response_lower]
+                            
+                            if found_indicators:
+                                st.write(f"**🚨 Firewall indicators found:** {', '.join(found_indicators)}")
+                            
+                            # Check response headers for firewall info
+                            firewall_headers = [h for h in response_headers.keys() if any(fw in h.lower() for fw in ['firewall', 'security', 'block', 'filter'])]
+                            if firewall_headers:
+                                st.write(f"**🚨 Security headers:** {firewall_headers}")
 
                     if response.status_code == 404:
                         st.error("❌ **404 Error: Request blocked by firewall**")
@@ -760,25 +880,115 @@ def main():
                     if database_information:
                         # Step 3: LLM-based final structure generation with retries
                         st.subheader("🏗️ Step 3: LLM-Based Final Structure Generation")
+                        
+                        # Display LLM request details as prominently requested
+                        with st.expander("🔍 **LLM Request Details** - System Prompt, User Prompt & Code Snippet", expanded=False):
+                            st.write("**What does application metadata do?**")
+                            st.info("""
+                            **Application Metadata** fetches application details from the backend including:
+                            - **Information**: Application Name, Type, Central ID, Company Platform, Tech Platform
+                            - **Architecture**: Target Production Environment, Hosting Environment, Internet Facing status
+                            - **Risk**: Data Classification
+                            - **Regulatory**: SDE/PII information based on data classification
+                            
+                            This metadata provides context about the application that the database belongs to, helping with compliance and architectural understanding.
+                            """)
+                            
+                            st.write("---")
+                            st.write("**📋 LLM Request Information for Final Structure Generation:**")
+                            
+                            # Show what will be sent to the LLM
+                            combined_data = {
+                                "extracted_entries": database_information,
+                                "source_files": []
+                            }
+                            
+                            # Add source file information
+                            for i, result in enumerate(database_data['results']):
+                                if i < len(database_information):
+                                    combined_data["source_files"].append({
+                                        "index": i,
+                                        "source": result.get('metadata', {}).get('source', f'unknown_{i}'),
+                                        "similarity_score": result.get('similarity_score', 0)
+                                    })
+                            
+                            data_str = json.dumps(combined_data, indent=2)
+                            
+                            transformation_prompt = """Given the extracted Couchbase/NoSQL database information below, create a comprehensive final database specification. 
+
+ONLY include information that was actually found in the extracted data. Do not add placeholder or dummy data.
+
+Structure the output as JSON with these sections:
+1. "Buckets_and_Collections": Only list actual bucket and collection names found
+2. "Queries": Only include actual N1QL/SQL queries found  
+3. "Document_Types": Only include actual document types/schemas found
+4. "Indexes": Only include actual index information found
+5. "SDK_Operations": Only include actual SDK operations found
+6. "Connection_Details": Only include actual connection information found
+
+If a section has no actual data, omit it entirely or set it to an empty array/object.
+
+Extracted data to process:"""
+                            
+                            st.write("**🎯 System Prompt:**")
+                            st.text_area(
+                                "System Prompt", 
+                                value=database_system_prompt + " Focus on creating accurate final output with only real extracted data.",
+                                height=120, 
+                                disabled=True, 
+                                key="step3_system_prompt"
+                            )
+                            
+                            st.write("**💬 User Prompt:**")
+                            st.text_area(
+                                "User Prompt", 
+                                value=transformation_prompt,
+                                height=200, 
+                                disabled=True, 
+                                key="step3_user_prompt"
+                            )
+                            
+                            st.write("**📄 Code Snippet/Data Being Sent:**")
+                            st.write(f"**📊 Data Size:** {len(data_str):,} characters ({len(data_str)/1024:.1f} KB)")
+                            
+                            if len(data_str) > 2000:
+                                st.write("**📁 Code Snippet (First 1000 chars):**")
+                                st.code(data_str[:1000] + "\n\n... [CONTENT CONTINUES] ...", language="json")
+                                st.write("**📁 Code Snippet (Last 1000 chars):**")
+                                st.code("... [CONTENT CONTINUES] ...\n\n" + data_str[-1000:], language="json")
+                            else:
+                                st.write("**📁 Complete Code Snippet:**")
+                                st.code(data_str, language="json")
+                            
+                            # Show potential issues
+                            st.write("**⚠️ AI_FIREWALL_SRE Issue Analysis:**")
+                            payload_str = data_str.lower()
+                            
+                            security_terms = [
+                                'password', 'secret', 'token', 'key', 'auth', 'credential',
+                                'admin', 'root', 'sudo', 'exec', 'eval', 'shell',
+                                'injection', 'xss', 'script', 'exploit', 'attack'
+                            ]
+                            
+                            found_terms = [term for term in security_terms if term in payload_str]
+                            
+                            if found_terms:
+                                st.warning(f"🚨 **Potential firewall triggers found:** {', '.join(found_terms)}")
+                                st.write("These terms might trigger AI_FIREWALL_SRE blocking.")
+                            else:
+                                st.success("✅ **No obvious security-related terms detected**")
+                            
+                            payload_size = len(data_str)
+                            if payload_size > 100000:  # 100KB
+                                st.error(f"🚨 **Large payload:** {payload_size:,} bytes - may exceed firewall limits")
+                            elif payload_size > 50000:  # 50KB
+                                st.warning(f"⚠️ **Medium payload:** {payload_size:,} bytes - monitor for limits")
+                            else:
+                                st.info(f"ℹ️ **Payload size:** {payload_size:,} bytes - should be acceptable")
+                        
                         final_database_info = llm_transform_database_data_with_retries(
                             database_information, database_data['results'], database_system_prompt
                         )
-                        
-                        # Get application metadata (try using the vector name as codebase)
-                        st.subheader("🚗 Step 4: Application Metadata")
-                        try:
-                            # Try to extract metadata using the vector name (removing any suffixes)
-                            base_name = vector_name.replace('-readme-embeddings', '').replace('-embeddings', '')
-                            metadata = fetch_metadata(base_name)
-                            if metadata is None:
-                                metadata = {"note": f"No metadata found for {base_name}"}
-                                st.warning("⚠️ **No application metadata found**")
-                            else:
-                                st.success("✅ **Application metadata extracted!**")
-                                st.json(metadata)
-                        except Exception as e:
-                            metadata = {"error": f"Metadata extraction failed: {str(e)}"}
-                            st.error(f"❌ **Metadata extraction failed:** {str(e)}")
                         
                         # Prepare final results with only actual data
                         final_results = {
@@ -791,7 +1001,6 @@ def main():
                                 "whole_codebase_processed": process_whole_codebase,
                                 "similarity_threshold_used": similarity_threshold
                             },
-                            "Application": metadata,
                             **final_database_info  # Merge the LLM-generated database info directly
                         }
                         
