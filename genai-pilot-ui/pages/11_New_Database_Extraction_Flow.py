@@ -442,19 +442,154 @@ def llm_transform_database_data_with_retries(db_info_list, all_vector_results, s
             })
     
     # Use LLM to structure the final output
-    transformation_prompt = """Given the extracted Couchbase/NoSQL database information below, create a comprehensive final database specification. 
+    transformation_prompt = """Given the extracted Couchbase/NoSQL database information below, create a comprehensive couchbase_analysis JSON structure.
 
 ONLY include information that was actually found in the extracted data. Do not add placeholder or dummy data.
 
-Structure the output as JSON with these sections:
-1. "Buckets_and_Collections": Only list actual bucket and collection names found
-2. "Queries": Only include actual N1QL/SQL queries found  
-3. "Document_Types": Only include actual document types/schemas found
-4. "Indexes": Only include actual index information found
-5. "SDK_Operations": Only include actual SDK operations found
-6. "Connection_Details": Only include actual connection information found
+Structure the output as JSON with this exact format:
+{
+  "couchbase_analysis": {
+    "metadata": {
+      "analysis_date": "YYYY-MM-DD",
+      "codebase_name": "extracted from vector name or source files",
+      "total_files_analyzed": count_of_source_files,
+      "couchbase_related_files": count_of_files_with_couchbase_content
+    },
+    "connections": [
+      {
+        "connection_id": "connection_identifier",
+        "connection_string": "actual_connection_string_found",
+        "username": "username_or_variable_found",
+        "password": "password_or_variable_found",
+        "file_path": "source_file_path",
+        "line_number": line_number_if_available,
+        "environment_variables": ["list_of_env_vars"]
+      }
+    ],
+    "buckets": [
+      {
+        "bucket_name": "actual_bucket_name",
+        "scope": "scope_name_if_found",
+        "collections": [
+          {
+            "name": "collection_name",
+            "document_types": ["list_of_document_types"],
+            "estimated_document_count": "count_if_available",
+            "ttl_seconds": ttl_value_if_specified
+          }
+        ],
+        "file_references": ["file:line_references"]
+      }
+    ],
+    "document_models": [
+      {
+        "document_type": "document_type_name",
+        "key_pattern": "key_pattern_found",
+        "fields": [
+          {
+            "name": "field_name",
+            "type": "field_type",
+            "required": true_or_false
+          }
+        ],
+        "class_path": "source_file_path"
+      }
+    ],
+    "queries": [
+      {
+        "query_id": "query_identifier",
+        "query_type": "N1QL_or_SQL",
+        "query_string": "actual_query_string",
+        "parameters": ["parameter_list"],
+        "file_path": "source_file",
+        "line_number": line_number_if_available,
+        "method_name": "method_name_if_available"
+      }
+    ],
+    "indexes": [
+      {
+        "index_name": "index_name",
+        "index_type": "GSI_or_PRIMARY",
+        "fields": ["indexed_fields"],
+        "bucket": "bucket_name",
+        "scope": "scope_name",
+        "collection": "collection_name",
+        "file_path": "source_file",
+        "line_number": line_number_if_available
+      }
+    ],
+    "operations": [
+      {
+        "operation_type": "GET_UPSERT_REMOVE_etc",
+        "method_name": "method_name",
+        "file_path": "source_file",
+        "line_number": line_number,
+        "key_pattern": "key_pattern",
+        "collection": "collection_name",
+        "ttl_seconds": ttl_if_specified
+      }
+    ],
+    "configuration": [
+      {
+        "config_type": "configuration_type",
+        "class_name": "class_name",
+        "file_path": "config_file_path",
+        "settings": {
+          "key": "value"
+        }
+      }
+    ],
+    "dependencies": [
+      {
+        "artifact_id": "dependency_name",
+        "group_id": "group_name",
+        "version": "version_number",
+        "file_path": "dependency_file",
+        "line_number": line_number_if_available
+      }
+    ],
+    "security": [
+      {
+        "auth_method": "authentication_method",
+        "tls_enabled": true_or_false,
+        "certificate_path": "cert_path_if_found",
+        "file_path": "source_file",
+        "line_number": line_number
+      }
+    ],
+    "performance_patterns": [
+      {
+        "pattern": "pattern_name",
+        "implementation": "implementation_details",
+        "file_path": "source_file"
+      }
+    ],
+    "potential_issues": [
+      {
+        "severity": "HIGH_MEDIUM_LOW",
+        "issue": "issue_description",
+        "file_path": "problematic_file",
+        "line_number": line_number,
+        "recommendation": "recommendation_text"
+      }
+    ],
+    "migration_notes": [
+      {
+        "from_version": "old_version",
+        "to_version": "new_version",
+        "changes": ["list_of_changes"]
+      }
+    ]
+  }
+}
 
-If a section has no actual data, omit it entirely or set it to an empty array/object.
+IMPORTANT: 
+- Only include sections that have actual data found in the extracted information
+- If no data is found for a section, omit it entirely
+- Use actual file paths, line numbers, and code references when available
+- For metadata.analysis_date use today's date
+- Extract codebase_name from the vector name or source files
+- Count actual files from the source_files data provided
 
 Extracted data to process:"""
     
@@ -669,13 +804,6 @@ def create_fallback_structure(db_info_list):
     """Create a fallback structure when LLM transformation fails"""
     st.warning("🛡️ **Using fallback structure generation** - preserving extracted data without LLM transformation")
     
-    fallback_structure = {
-        "Raw_Extracted_Data": db_info_list,
-        "Extraction_Status": "LLM transformation failed, raw data preserved",
-        "Timestamp": datetime.now().isoformat(),
-        "Note": "Manual review required - LLM transformation could not complete"
-    }
-    
     # Try to extract some basic info without LLM
     buckets = []
     queries = []
@@ -692,12 +820,45 @@ def create_fallback_structure(db_info_list):
                 if any(q_word in str(value).lower() for q_word in ['select', 'insert', 'n1ql', 'query']) and len(str(value)) > 10:
                     queries.append(str(value))
     
-    if buckets:
-        fallback_structure["Buckets_Found"] = list(set(buckets))
-    if queries:
-        fallback_structure["Queries_Found"] = queries
+    # Create couchbase_analysis structure for fallback
+    fallback_structure = {
+        "couchbase_analysis": {
+            "metadata": {
+                "analysis_date": datetime.now().strftime("%Y-%m-%d"),
+                "codebase_name": "unknown",
+                "total_files_analyzed": len(db_info_list),
+                "couchbase_related_files": len(db_info_list)
+            }
+        }
+    }
     
-    return {"Database Information": fallback_structure}
+    if buckets:
+        fallback_structure["couchbase_analysis"]["buckets"] = [
+            {"bucket_name": bucket, "file_references": []} for bucket in list(set(buckets))
+        ]
+    
+    if queries:
+        fallback_structure["couchbase_analysis"]["queries"] = [
+            {
+                "query_id": f"fallback_query_{i}",
+                "query_type": "N1QL",
+                "query_string": query,
+                "parameters": [],
+                "file_path": "unknown",
+                "line_number": 0,
+                "method_name": "unknown"
+            } for i, query in enumerate(queries)
+        ]
+    
+    # Add the raw extracted data for manual review
+    fallback_structure["couchbase_analysis"]["raw_extracted_data"] = {
+        "status": "LLM transformation failed, raw data preserved",
+        "timestamp": datetime.now().isoformat(),
+        "note": "Manual review required - LLM transformation could not complete",
+        "data": db_info_list
+    }
+    
+    return fallback_structure
 
 
 def llm_transform_chunked_data(db_info_list, all_vector_results, system_prompt):
@@ -708,12 +869,26 @@ def llm_transform_chunked_data(db_info_list, all_vector_results, system_prompt):
     chunks = [db_info_list[i:i + chunk_size] for i in range(0, len(db_info_list), chunk_size)]
     
     final_results = {
-        "Buckets_and_Collections": [],
-        "Queries": [],
-        "Document_Types": [],
-        "Indexes": [],
-        "SDK_Operations": [],
-        "Connection_Details": []
+        "couchbase_analysis": {
+            "metadata": {
+                "analysis_date": datetime.now().strftime("%Y-%m-%d"),
+                "codebase_name": "chunked_processing",
+                "total_files_analyzed": len(db_info_list),
+                "couchbase_related_files": len(db_info_list)
+            },
+            "connections": [],
+            "buckets": [],
+            "document_models": [],
+            "queries": [],
+            "indexes": [],
+            "operations": [],
+            "configuration": [],
+            "dependencies": [],
+            "security": [],
+            "performance_patterns": [],
+            "potential_issues": [],
+            "migration_notes": []
+        }
     }
     
     for i, chunk in enumerate(chunks, 1):
@@ -723,22 +898,30 @@ def llm_transform_chunked_data(db_info_list, all_vector_results, system_prompt):
         chunk_results = llm_transform_database_data_with_retries(chunk, all_vector_results[:(len(chunk))], system_prompt, max_retries=2)
         
         # Merge results
-        if "Database Information" in chunk_results:
-            chunk_data = chunk_results["Database Information"]
+        if "couchbase_analysis" in chunk_results:
+            chunk_data = chunk_results["couchbase_analysis"]
             for section, data in chunk_data.items():
-                if section in final_results and data:
-                    if isinstance(data, list):
-                        final_results[section].extend(data)
+                if section == "metadata":
+                    # Update metadata counts
+                    if "total_files_analyzed" in data:
+                        final_results["couchbase_analysis"]["metadata"]["total_files_analyzed"] += data.get("total_files_analyzed", 0)
+                    if "couchbase_related_files" in data:
+                        final_results["couchbase_analysis"]["metadata"]["couchbase_related_files"] += data.get("couchbase_related_files", 0)
+                elif section in final_results["couchbase_analysis"] and data:
+                    if isinstance(data, list) and isinstance(final_results["couchbase_analysis"][section], list):
+                        final_results["couchbase_analysis"][section].extend(data)
                     elif isinstance(data, dict):
-                        if isinstance(final_results[section], list):
-                            final_results[section].append(data)
-                        elif isinstance(final_results[section], dict):
-                            final_results[section].update(data)
+                        if isinstance(final_results["couchbase_analysis"][section], list):
+                            final_results["couchbase_analysis"][section].append(data)
+                        elif isinstance(final_results["couchbase_analysis"][section], dict):
+                            final_results["couchbase_analysis"][section].update(data)
     
-    # Remove empty sections
-    final_results = {k: v for k, v in final_results.items() if v}
+    # Remove empty sections from couchbase_analysis
+    couchbase_data = final_results["couchbase_analysis"]
+    filtered_data = {k: v for k, v in couchbase_data.items() if v and (not isinstance(v, list) or len(v) > 0)}
+    final_results["couchbase_analysis"] = filtered_data
     
-    return {"Database Information": final_results}
+    return final_results
 
 
 def commit_json_to_github(vector_name, json_data):
@@ -914,19 +1097,154 @@ def main():
                             
                             data_str = json.dumps(combined_data, indent=2)
                             
-                            transformation_prompt = """Given the extracted Couchbase/NoSQL database information below, create a comprehensive final database specification. 
+                            transformation_prompt = """Given the extracted Couchbase/NoSQL database information below, create a comprehensive couchbase_analysis JSON structure.
 
 ONLY include information that was actually found in the extracted data. Do not add placeholder or dummy data.
 
-Structure the output as JSON with these sections:
-1. "Buckets_and_Collections": Only list actual bucket and collection names found
-2. "Queries": Only include actual N1QL/SQL queries found  
-3. "Document_Types": Only include actual document types/schemas found
-4. "Indexes": Only include actual index information found
-5. "SDK_Operations": Only include actual SDK operations found
-6. "Connection_Details": Only include actual connection information found
+Structure the output as JSON with this exact format:
+{
+  "couchbase_analysis": {
+    "metadata": {
+      "analysis_date": "YYYY-MM-DD",
+      "codebase_name": "extracted from vector name or source files",
+      "total_files_analyzed": count_of_source_files,
+      "couchbase_related_files": count_of_files_with_couchbase_content
+    },
+    "connections": [
+      {
+        "connection_id": "connection_identifier",
+        "connection_string": "actual_connection_string_found",
+        "username": "username_or_variable_found",
+        "password": "password_or_variable_found",
+        "file_path": "source_file_path",
+        "line_number": line_number_if_available,
+        "environment_variables": ["list_of_env_vars"]
+      }
+    ],
+    "buckets": [
+      {
+        "bucket_name": "actual_bucket_name",
+        "scope": "scope_name_if_found",
+        "collections": [
+          {
+            "name": "collection_name",
+            "document_types": ["list_of_document_types"],
+            "estimated_document_count": "count_if_available",
+            "ttl_seconds": ttl_value_if_specified
+          }
+        ],
+        "file_references": ["file:line_references"]
+      }
+    ],
+    "document_models": [
+      {
+        "document_type": "document_type_name",
+        "key_pattern": "key_pattern_found",
+        "fields": [
+          {
+            "name": "field_name",
+            "type": "field_type",
+            "required": true_or_false
+          }
+        ],
+        "class_path": "source_file_path"
+      }
+    ],
+    "queries": [
+      {
+        "query_id": "query_identifier",
+        "query_type": "N1QL_or_SQL",
+        "query_string": "actual_query_string",
+        "parameters": ["parameter_list"],
+        "file_path": "source_file",
+        "line_number": line_number_if_available,
+        "method_name": "method_name_if_available"
+      }
+    ],
+    "indexes": [
+      {
+        "index_name": "index_name",
+        "index_type": "GSI_or_PRIMARY",
+        "fields": ["indexed_fields"],
+        "bucket": "bucket_name",
+        "scope": "scope_name",
+        "collection": "collection_name",
+        "file_path": "source_file",
+        "line_number": line_number_if_available
+      }
+    ],
+    "operations": [
+      {
+        "operation_type": "GET_UPSERT_REMOVE_etc",
+        "method_name": "method_name",
+        "file_path": "source_file",
+        "line_number": line_number,
+        "key_pattern": "key_pattern",
+        "collection": "collection_name",
+        "ttl_seconds": ttl_if_specified
+      }
+    ],
+    "configuration": [
+      {
+        "config_type": "configuration_type",
+        "class_name": "class_name",
+        "file_path": "config_file_path",
+        "settings": {
+          "key": "value"
+        }
+      }
+    ],
+    "dependencies": [
+      {
+        "artifact_id": "dependency_name",
+        "group_id": "group_name",
+        "version": "version_number",
+        "file_path": "dependency_file",
+        "line_number": line_number_if_available
+      }
+    ],
+    "security": [
+      {
+        "auth_method": "authentication_method",
+        "tls_enabled": true_or_false,
+        "certificate_path": "cert_path_if_found",
+        "file_path": "source_file",
+        "line_number": line_number
+      }
+    ],
+    "performance_patterns": [
+      {
+        "pattern": "pattern_name",
+        "implementation": "implementation_details",
+        "file_path": "source_file"
+      }
+    ],
+    "potential_issues": [
+      {
+        "severity": "HIGH_MEDIUM_LOW",
+        "issue": "issue_description",
+        "file_path": "problematic_file",
+        "line_number": line_number,
+        "recommendation": "recommendation_text"
+      }
+    ],
+    "migration_notes": [
+      {
+        "from_version": "old_version",
+        "to_version": "new_version",
+        "changes": ["list_of_changes"]
+      }
+    ]
+  }
+}
 
-If a section has no actual data, omit it entirely or set it to an empty array/object.
+IMPORTANT: 
+- Only include sections that have actual data found in the extracted information
+- If no data is found for a section, omit it entirely
+- Use actual file paths, line numbers, and code references when available
+- For metadata.analysis_date use today's date
+- Extract codebase_name from the vector name or source files
+- Count actual files from the source_files data provided
 
 Extracted data to process:"""
                             
@@ -990,19 +1308,8 @@ Extracted data to process:"""
                             database_information, database_data['results'], database_system_prompt
                         )
                         
-                        # Prepare final results with only actual data
-                        final_results = {
-                            "extraction_metadata": {
-                                "extraction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                "vector_database": vector_name,
-                                "extraction_type": "llm_based_couchbase_extraction",
-                                "vector_results_processed": len(database_data['results']),
-                                "database_entries_extracted": len(database_information),
-                                "whole_codebase_processed": process_whole_codebase,
-                                "similarity_threshold_used": similarity_threshold
-                            },
-                            **final_database_info  # Merge the LLM-generated database info directly
-                        }
+                        # The LLM should return the couchbase_analysis structure directly
+                        final_results = final_database_info
                         
                         # Step 5: Display results
                         st.header("🎯 Final Database Extraction Results")
