@@ -59,9 +59,48 @@ def similarity_search_pgvector(codebase, query, vector_results_count, similarity
             filtered_results.append({
                 'page_content': doc.page_content, 
                 'metadata': doc.metadata,
-                'similarity_score': float(score)
+                'score': float(score)
             })
     
     # Sort by similarity score (highest first) and limit to requested count
-    filtered_results.sort(key=lambda x: x['similarity_score'], reverse=True)
+    filtered_results.sort(key=lambda x: x['score'], reverse=True)
     return filtered_results[:vector_results_count]
+
+def perform_embedding_postgres(VECTOR_STORE_DIR, split_document):
+    print(f"Performing embedding for {VECTOR_STORE_DIR}")
+    vectorstore = None
+    try:
+        COLLECTION_NAME = VECTOR_STORE_DIR
+        vectorstore = get_connection('1', {
+            "collection_name": COLLECTION_NAME,
+            "embedding_model_index": "ada-3",
+            "schema": "tapld00"
+        })
+        
+        # Process in smaller batches with progress tracking
+        batch_size = 25  # Reduced from 50 for better connection stability
+        total_batches = (len(split_document) + batch_size - 1) // batch_size
+        
+        for i, batch_start in enumerate(range(0, len(split_document), batch_size)):
+            batch = split_document[batch_start:batch_start + batch_size]
+            print(f"Processing batch {i+1}/{total_batches} ({len(batch)} documents)")
+            vectorstore.add_documents(batch)
+        
+        return {"status": "success", "message": "Embedding performed successfully"}
+    except Exception as e:
+        print(f"Error performing embedding: {e}")
+        return {"status": "error", "message": f"Embedding performed unsuccessfully: {str(e)}"}
+    finally:
+        # Ensure connection cleanup
+        if vectorstore:
+            try:
+                # Try different cleanup methods depending on the vectorstore implementation
+                if hasattr(vectorstore, 'close'):
+                    vectorstore.close()
+                elif hasattr(vectorstore, '_client') and hasattr(vectorstore._client, 'close'):
+                    vectorstore._client.close()
+                elif hasattr(vectorstore, 'client') and hasattr(vectorstore.client, 'close'):
+                    vectorstore.client.close()
+                print("Connection cleanup completed")
+            except Exception as cleanup_error:
+                print(f"Warning: Connection cleanup failed: {cleanup_error}")
