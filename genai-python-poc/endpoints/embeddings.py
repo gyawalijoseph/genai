@@ -1,6 +1,6 @@
 import os
 from flask import Blueprint, request, jsonify
-from service.services import generate_embeddings
+from service.services import generate_embeddings, generate_embeddings_fullfile
 from utilities.utils import similarity_search_pgvector
 
 embeddings_bp = Blueprint('embeddings', __name__)
@@ -16,6 +16,24 @@ def embed_codebase():
         return jsonify(result), 400
     else:
         return jsonify(result)
+
+@embeddings_bp.route('/embed-fullfile', methods=['POST'])
+def embed_codebase_fullfile():
+    """Embed entire codebase with full file content per embedding (codebase-fullfile)"""
+    data = request.json
+    codebase = data.get('codebase')
+    
+    if not codebase:
+        return jsonify({"status": "error", "message": "Missing codebase parameter"}), 400
+    
+    try:
+        result = generate_embeddings_fullfile(codebase)
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+        else:
+            return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @embeddings_bp.route('/embed-readme', methods=['POST'])
 def embed_readme():
