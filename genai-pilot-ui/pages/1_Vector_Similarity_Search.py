@@ -22,12 +22,19 @@ def main():
         log_filename = f"{codebase}_{timestamp}.json"
         log_filepath = os.path.join("logs", log_filename)
         
+        # Extract file names from results
+        files = []
+        for result in data['results']:
+            if 'metadata' in result and 'source' in result['metadata']:
+                files.append(result['metadata']['source'])
+        
         log_data = {
             "query": query,
             "codebase": codebase,
             "vector_results_count": vector_results_count,
             "score_threshold": score_threshold,
             "timestamp": timestamp,
+            "files": files,
             "results": data['results']
         }
         
