@@ -1,0 +1,24 @@
+{
+    "schemaVersion": "2.12.0",
+    "functionVersion": "3.46.0",
+    "kind": "java",
+    "deployCoordinates":{
+        "groupId": "com.axp.microdose",
+        "artifactId": "microdose-examples",
+        "version": "3.46.0"
+    },
+    "Deployment": {
+        "namespace": "one-data",
+        "fulfilledBy": "com.axp.microdose.examples.ReadHelloWorldVerticle",
+        "address": "ReadHelloWorld.v1",
+        "decoratedBy": "CreatePbulicSecurityPrincipal.v1"
+    },
+    "policies": {
+        "network": {
+            "allowFrom": [
+                "internet",
+                "intranet"
+            ]
+        }
+    }
+}
