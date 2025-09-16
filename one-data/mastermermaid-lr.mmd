@@ -1,0 +1,129 @@
+flowchart LR
+    APP["APPLICATION_500000383<br/>application_id: 500000383"]
+    
+    %% IdentityStore Database
+    IDS_DB["IdentityStore<br/>Type: Couchbase"]
+    IDS_TABLE["IdentityStore Table"]
+    IDS_COLS["IdentityStore Columns<br/>street_ln_1: read|string<br/>postal_cd: read|string<br/>id: read|string<br/>gov_doc_ids: read|array<br/>phones: read|array<br/>email_addresses: read|array<br/>id_last_4: read|string<br/>first_nm_first_3: read|string<br/>lst_nm_first_4: read|string<br/>yob: read|int<br/>postal_cd_first_5: read|string<br/>glbl_id: read|string<br/>business_ids: read|object<br/>obligor: read|object<br/>legal: read|string<br/>parent: read|string<br/>parent_acct: read|string<br/>acct_id: read|string<br/>create_epoch_val: read|int<br/>epoch_val: read|int<br/>cm15: read|string<br/>pcn: read|string<br/>cm13: read|string<br/>typ: read|string<br/>lst_updt_ts: read|timestamp<br/>rel_id: read|string"]
+    
+    ACC_TABLE["Account Table"]
+    ACC_COLS["Account Columns<br/>acct_id: read|string<br/>cm13: read|string<br/>cm15: read|string<br/>alt_acct_id: read|string<br/>clnt_origin_id: read|string<br/>external: update|json<br/>external_ids: update|json<br/>ctgy_typ_cd: read|string<br/>bu_cd: read|string<br/>typ: read|string<br/>cd: read|string<br/>purge_ind: read|string<br/>status: update|json"]
+    
+    CUST_TABLE["Customer Table"]
+    CUST_COLS["Customer Columns<br/>id: read|string<br/>business_id: read|string<br/>obligor_id: read|string<br/>conglomerate_id: read|string<br/>counterparty_id: read|string<br/>dnb_information: update|json<br/>dnb: update|json<br/>pin_information: update|array<br/>pin: update|array<br/>evaluation_details: update|json<br/>obligor_eval_dtls: update|json<br/>mnl_Lnk_cd: read|string"]
+    
+    %% CustomerDB Database
+    CUSTDB_DB["CustomerDB<br/>Type: PostgreSQL"]
+    CUSTOMERS_TABLE["Customers Table"]
+    CUSTOMERS_COLS["Customers Columns<br/>id: read,write,update,delete|unknown<br/>name: write|unknown<br/>email: write,update|unknown"]
+    
+    %% Analytics Database
+    ANAL_DB["Analytics<br/>Type: MongoDB"]
+    EVENTS_TABLE["User Events Table"]
+    EVENTS_COLS["User Events Columns<br/>userId: read,write|unknown<br/>event: write|unknown"]
+    
+    GEN_EVENTS_TABLE["Events Table"]
+    GEN_EVENTS_COLS["Events Columns<br/>type: read,write|string<br/>user: write|string"]
+    
+    %% Contact Profile Database
+    CONTACT_DB["Contact Profile<br/>Type: unknown"]
+    BUSINESS_TABLE["Business Table"]
+    BUSINESS_COLS["Business Columns<br/>bounce_bk_dt: read|unknown<br/>bounce_bk_ind: read|unknown<br/>dsgntn_src: read|unknown<br/>dsgntn_ts: read|unknown<br/>dsgntn_typ: read|unknown<br/>email_ad: read|unknown<br/>hash_nbr: read|unknown<br/>lst_updt_src: read|unknown<br/>lst_updt_ts: read|unknown<br/>lst_verf_src: read|unknown<br/>lst_verf_ts: read|unknown<br/>lst_verf_usr: read|unknown<br/>verf_sta: read|unknown<br/>typ: read|unknown"]
+    
+    %% Identity Profile Database
+    ID_PROF_DB["Identity Profile<br/>Type: unknown"]
+    NAT_TABLE["Nationality Table"]
+    NAT_COLS["Nationality Columns<br/>lst_updt_src: read|unknown<br/>lst_updt_ts: read|unknown<br/>primary: read|unknown<br/>residential_status: read|unknown<br/>secondary: read|unknown"]
+    
+    %% Digital Profile Database
+    DIG_PROF_DB["Digital Profile<br/>Type: unknown"]
+    IP_TABLE["IP Addresses Table"]
+    IP_COLS["IP Addresses Columns<br/>ip: read|unknown<br/>lst_updt_src: read|unknown<br/>lst_updt_ts: read|unknown"]
+    
+    DEV_TABLE["Devices Table"]
+    DEV_COLS["Devices Columns<br/>id: read|unknown<br/>lst_updt_src: read|unknown<br/>lst_updt_ts: read|unknown<br/>typ: read|unknown"]
+    
+    %% DataCacheStore Database
+    CACHE_DB["DataCacheStore<br/>Type: Couchbase"]
+    CACHE_TABLE["DataCacheStore Table"]
+    CACHE_COLS["DataCacheStore Columns<br/>id: read|string<br/>levelId: read|string<br/>acctId: read|string<br/>parentAcct: read|string<br/>idType: read|string<br/>altAcctId: read|string<br/>purgeInd: read|boolean<br/>rel_id: read|string<br/>cm13: read|string<br/>cm11: read|string<br/>corp_id: read|string<br/>clnt_origin_id: read|string<br/>ctgy_typ_cd: read|string<br/>profiles: read|array"]
+    
+    %% RTF Database
+    RTF_DB["RTF<br/>Type: PostgreSQL"]
+    RTF_TABLE["RTF Event Table"]
+    RTF_COLS["RTF Event Columns<br/>event_id: write,update|string<br/>row_key_tx: write|string<br/>amex_correlation_id: write|string<br/>header_tx: write,update|string<br/>payload_tx: write,update|string<br/>create_ts: write|timestamp<br/>publish_status_cd: update|string"]
+    
+    %% IdentityStore PostgreSQL
+    IDS_PG_DB["IdentityStore PG<br/>Type: PostgreSQL"]
+    IDS_PG_TABLE["Identity Store Table"]
+    IDS_PG_COLS["Identity Store Columns<br/>id_store_row_key_id: read|uuid<br/>identity_doc_tx: read|jsonb<br/>acctId: read|text<br/>levelId: read|text<br/>parentAcct: read|text<br/>idType: read|text<br/>altAcctId: read|text<br/>purgeInd: read|boolean<br/>rel_id: read|text"]
+    
+    %% EntityStore Database
+    ENT_DB["EntityStore Hiped<br/>Type: COUCHBASE"]
+    LEGAL_TABLE["Legal Entity Table"]
+    LEGAL_COLS["Legal Entity Columns<br/>id: delete,read|string<br/>ultimate_parent_identifier: read|string"]
+    
+    COUNTER_TABLE["Counterparty Entity Table"]
+    COUNTER_COLS["Counterparty Entity Columns<br/>id: delete,read|string<br/>ultimate_parent_identifier: read|string"]
+    
+    %% Database Level Connections
+    APP --> IDS_DB
+    APP --> CUSTDB_DB
+    APP --> ANAL_DB
+    APP --> CONTACT_DB
+    APP --> ID_PROF_DB
+    APP --> DIG_PROF_DB
+    APP --> CACHE_DB
+    APP --> RTF_DB
+    APP --> IDS_PG_DB
+    APP --> ENT_DB
+    
+    %% IdentityStore connections
+    IDS_DB --> IDS_TABLE
+    IDS_DB --> ACC_TABLE
+    IDS_DB --> CUST_TABLE
+    IDS_TABLE --> IDS_COLS
+    ACC_TABLE --> ACC_COLS
+    CUST_TABLE --> CUST_COLS
+    
+    %% CustomerDB connections
+    CUSTDB_DB --> CUSTOMERS_TABLE
+    CUSTOMERS_TABLE --> CUSTOMERS_COLS
+    
+    %% Analytics connections
+    ANAL_DB --> EVENTS_TABLE
+    ANAL_DB --> GEN_EVENTS_TABLE
+    EVENTS_TABLE --> EVENTS_COLS
+    GEN_EVENTS_TABLE --> GEN_EVENTS_COLS
+    
+    %% Contact Profile connections
+    CONTACT_DB --> BUSINESS_TABLE
+    BUSINESS_TABLE --> BUSINESS_COLS
+    
+    %% Identity Profile connections
+    ID_PROF_DB --> NAT_TABLE
+    NAT_TABLE --> NAT_COLS
+    
+    %% Digital Profile connections
+    DIG_PROF_DB --> IP_TABLE
+    DIG_PROF_DB --> DEV_TABLE
+    IP_TABLE --> IP_COLS
+    DEV_TABLE --> DEV_COLS
+    
+    %% DataCacheStore connections
+    CACHE_DB --> CACHE_TABLE
+    CACHE_TABLE --> CACHE_COLS
+    
+    %% RTF connections
+    RTF_DB --> RTF_TABLE
+    RTF_TABLE --> RTF_COLS
+    
+    %% IdentityStore PG connections
+    IDS_PG_DB --> IDS_PG_TABLE
+    IDS_PG_TABLE --> IDS_PG_COLS
+    
+    %% EntityStore connections
+    ENT_DB --> LEGAL_TABLE
+    ENT_DB --> COUNTER_TABLE
+    LEGAL_TABLE --> LEGAL_COLS
+    COUNTER_TABLE --> COUNTER_COLS

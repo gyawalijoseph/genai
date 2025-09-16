@@ -1,0 +1,340 @@
+erDiagram
+    APPLICATION_500000383 {
+        string application_id "500000383"
+    }
+    
+    %% IdentityStore Database
+    IDENTITYSTORE_DB {
+        string database_name "IdentityStore"
+        string database_type "Couchbase"
+    }
+    
+    IDENTITYSTORE_TABLE {
+        string table_name "IdentityStore"
+    }
+    
+    IDENTITYSTORE_COLUMNS {
+        string street_ln_1 "read|string"
+        string postal_cd "read|string"  
+        string id "read|string"
+        array gov_doc_ids "read|array"
+        array phones "read|array"
+        array email_addresses "read|array"
+        string id_last_4 "read|string"
+        string first_nm_first_3 "read|string"
+        string lst_nm_first_4 "read|string"
+        int yob "read|int"
+        string postal_cd_first_5 "read|string"
+        string glbl_id "read|string"
+        object business_ids "read|object"
+        object obligor "read|object"
+        string legal "read|string"
+        string parent "read|string"
+        string parent_acct "read|string"
+        string acct_id "read|string"
+        int create_epoch_val "read|int"
+        int epoch_val "read|int"
+        string cm15 "read|string"
+        string pcn "read|string"
+        string cm13 "read|string"
+        string typ "read|string"
+        timestamp lst_updt_ts "read|timestamp"
+        string rel_id "read|string"
+    }
+    
+    ACCOUNT_TABLE {
+        string table_name "account"
+    }
+    
+    ACCOUNT_COLUMNS {
+        string acct_id "read|string"
+        string cm13 "read|string"
+        string cm15 "read|string"
+        string alt_acct_id "read|string"
+        string clnt_origin_id "read|string"
+        json external "update|json"
+        json external_ids "update|json"
+        string ctgy_typ_cd "read|string"
+        string bu_cd "read|string"
+        string typ "read|string"
+        string cd "read|string"
+        string purge_ind "read|string"
+        json status "update|json"
+    }
+    
+    CUSTOMER_TABLE {
+        string table_name "customer"
+    }
+    
+    CUSTOMER_COLUMNS {
+        string id "read|string"
+        string business_id "read|string"
+        string obligor_id "read|string"
+        string conglomerate_id "read|string"
+        string counterparty_id "read|string"
+        json dnb_information "update|json"
+        json dnb "update|json"
+        array pin_information "update|array"
+        array pin "update|array"
+        json evaluation_details "update|json"
+        json obligor_eval_dtls "update|json"
+        string mnl_Lnk_cd "read|string"
+    }
+    
+    %% CustomerDB Database
+    CUSTOMERDB_DB {
+        string database_name "customerdb"
+        string database_type "PostgreSQL"
+    }
+    
+    CUSTOMERS_TABLE {
+        string table_name "customers"
+    }
+    
+    CUSTOMERS_COLUMNS {
+        unknown id "read,write,update,delete|unknown"
+        unknown name "write|unknown"
+        unknown email "write,update|unknown"
+    }
+    
+    %% Analytics Database
+    ANALYTICS_DB {
+        string database_name "analytics"
+        string database_type "MongoDB"
+    }
+    
+    USER_EVENTS_TABLE {
+        string table_name "user_events"
+    }
+    
+    USER_EVENTS_COLUMNS {
+        unknown userId "read,write|unknown"
+        unknown event "write|unknown"
+    }
+    
+    EVENTS_TABLE {
+        string table_name "events"
+    }
+    
+    EVENTS_COLUMNS {
+        string type "read,write|string"
+        string user "write|string"
+    }
+    
+    %% Contact Profile Database
+    CONTACT_PROFILE_DB {
+        string database_name "contact_profile"
+        string database_type "unknown"
+    }
+    
+    BUSINESS_TABLE {
+        string table_name "business"
+    }
+    
+    BUSINESS_COLUMNS {
+        unknown bounce_bk_dt "read|unknown"
+        unknown bounce_bk_ind "read|unknown"
+        unknown dsgntn_src "read|unknown"
+        unknown dsgntn_ts "read|unknown"
+        unknown dsgntn_typ "read|unknown"
+        unknown email_ad "read|unknown"
+        unknown hash_nbr "read|unknown"
+        unknown lst_updt_src "read|unknown"
+        unknown lst_updt_ts "read|unknown"
+        unknown lst_verf_src "read|unknown"
+        unknown lst_verf_ts "read|unknown"
+        unknown lst_verf_usr "read|unknown"
+        unknown verf_sta "read|unknown"
+        unknown typ "read|unknown"
+    }
+    
+    %% Identity Profile Database
+    IDENTITY_PROFILE_DB {
+        string database_name "identity_profile"
+        string database_type "unknown"
+    }
+    
+    NATIONALITY_TABLE {
+        string table_name "nationality"
+    }
+    
+    NATIONALITY_COLUMNS {
+        unknown lst_updt_src "read|unknown"
+        unknown lst_updt_ts "read|unknown"
+        unknown primary "read|unknown"
+        unknown residential_status "read|unknown"
+        unknown secondary "read|unknown"
+    }
+    
+    %% Digital Profile Database  
+    DIGITAL_PROFILE_DB {
+        string database_name "digital_profile"
+        string database_type "unknown"
+    }
+    
+    IP_ADDRESSES_TABLE {
+        string table_name "ip_addresses"
+    }
+    
+    IP_ADDRESSES_COLUMNS {
+        unknown ip "read|unknown"
+        unknown lst_updt_src "read|unknown"
+        unknown lst_updt_ts "read|unknown"
+    }
+    
+    DEVICES_TABLE {
+        string table_name "devices"
+    }
+    
+    DEVICES_COLUMNS {
+        unknown id "read|unknown"
+        unknown lst_updt_src "read|unknown"
+        unknown lst_updt_ts "read|unknown"
+        unknown typ "read|unknown"
+    }
+    
+    %% DataCacheStore Database
+    DATACACHESTORE_DB {
+        string database_name "DataCacheStore"
+        string database_type "Couchbase"
+    }
+    
+    DATACACHESTORE_TABLE {
+        string table_name "DataCacheStore"
+    }
+    
+    DATACACHESTORE_COLUMNS {
+        string id "read|string"
+        string levelId "read|string"
+        string acctId "read|string"
+        string parentAcct "read|string"
+        string idType "read|string"
+        string altAcctId "read|string"
+        boolean purgeInd "read|boolean"
+        string rel_id "read|string"
+        string cm13 "read|string"
+        string cm11 "read|string"
+        string corp_id "read|string"
+        string clnt_origin_id "read|string"
+        string ctgy_typ_cd "read|string"
+        array profiles "read|array"
+    }
+    
+    %% RTF Database
+    RTF_DB {
+        string database_name "rtf"
+        string database_type "PostgreSQL"
+    }
+    
+    RTF_EVENT_TABLE {
+        string table_name "rtf_event"
+    }
+    
+    RTF_EVENT_COLUMNS {
+        string event_id "write,update|string"
+        string row_key_tx "write|string"
+        string amex_correlation_id "write|string"
+        string header_tx "write,update|string"
+        string payload_tx "write,update|string"
+        timestamp create_ts "write|timestamp"
+        string publish_status_cd "update|string"
+    }
+    
+    %% IdentityStore PostgreSQL
+    IDENTITYSTORE_PG_DB {
+        string database_name "identitystore"
+        string database_type "PostgreSQL"
+    }
+    
+    IDENTITY_STORE_TABLE {
+        string table_name "identity_store"
+    }
+    
+    IDENTITY_STORE_COLUMNS {
+        uuid id_store_row_key_id "read|uuid"
+        jsonb identity_doc_tx "read|jsonb"
+        text acctId "read|text"
+        text levelId "read|text"
+        text parentAcct "read|text"
+        text idType "read|text"
+        text altAcctId "read|text"
+        boolean purgeInd "read|boolean"
+        text rel_id "read|text"
+    }
+    
+    %% EntityStore Database
+    ENTITYSTORE_DB {
+        string database_name "EntityStore_Hiped"
+        string database_type "COUCHBASE"
+    }
+    
+    LEGALENTITY_TABLE {
+        string table_name "LegalEntity.Active"
+    }
+    
+    LEGALENTITY_COLUMNS {
+        string id "delete,read|string"
+        string ultimate_parent_identifier "read|string"
+    }
+    
+    COUNTERPARTYENTITY_TABLE {
+        string table_name "CounterpartyEntity.Active"
+    }
+    
+    COUNTERPARTYENTITY_COLUMNS {
+        string id "delete,read|string"
+        string ultimate_parent_identifier "read|string"
+    }
+    
+    %% Relationships
+    APPLICATION_500000383 ||--o{ IDENTITYSTORE_DB : contains
+    APPLICATION_500000383 ||--o{ CUSTOMERDB_DB : contains
+    APPLICATION_500000383 ||--o{ ANALYTICS_DB : contains
+    APPLICATION_500000383 ||--o{ CONTACT_PROFILE_DB : contains
+    APPLICATION_500000383 ||--o{ IDENTITY_PROFILE_DB : contains
+    APPLICATION_500000383 ||--o{ DIGITAL_PROFILE_DB : contains
+    APPLICATION_500000383 ||--o{ DATACACHESTORE_DB : contains
+    APPLICATION_500000383 ||--o{ RTF_DB : contains
+    APPLICATION_500000383 ||--o{ IDENTITYSTORE_PG_DB : contains
+    APPLICATION_500000383 ||--o{ ENTITYSTORE_DB : contains
+    
+    IDENTITYSTORE_DB ||--o{ IDENTITYSTORE_TABLE : has
+    IDENTITYSTORE_DB ||--o{ ACCOUNT_TABLE : has
+    IDENTITYSTORE_DB ||--o{ CUSTOMER_TABLE : has
+    
+    IDENTITYSTORE_TABLE ||--o{ IDENTITYSTORE_COLUMNS : contains
+    ACCOUNT_TABLE ||--o{ ACCOUNT_COLUMNS : contains
+    CUSTOMER_TABLE ||--o{ CUSTOMER_COLUMNS : contains
+    
+    CUSTOMERDB_DB ||--o{ CUSTOMERS_TABLE : has
+    CUSTOMERS_TABLE ||--o{ CUSTOMERS_COLUMNS : contains
+    
+    ANALYTICS_DB ||--o{ USER_EVENTS_TABLE : has
+    ANALYTICS_DB ||--o{ EVENTS_TABLE : has
+    USER_EVENTS_TABLE ||--o{ USER_EVENTS_COLUMNS : contains
+    EVENTS_TABLE ||--o{ EVENTS_COLUMNS : contains
+    
+    CONTACT_PROFILE_DB ||--o{ BUSINESS_TABLE : has
+    BUSINESS_TABLE ||--o{ BUSINESS_COLUMNS : contains
+    
+    IDENTITY_PROFILE_DB ||--o{ NATIONALITY_TABLE : has
+    NATIONALITY_TABLE ||--o{ NATIONALITY_COLUMNS : contains
+    
+    DIGITAL_PROFILE_DB ||--o{ IP_ADDRESSES_TABLE : has
+    DIGITAL_PROFILE_DB ||--o{ DEVICES_TABLE : has
+    IP_ADDRESSES_TABLE ||--o{ IP_ADDRESSES_COLUMNS : contains
+    DEVICES_TABLE ||--o{ DEVICES_COLUMNS : contains
+    
+    DATACACHESTORE_DB ||--o{ DATACACHESTORE_TABLE : has
+    DATACACHESTORE_TABLE ||--o{ DATACACHESTORE_COLUMNS : contains
+    
+    RTF_DB ||--o{ RTF_EVENT_TABLE : has
+    RTF_EVENT_TABLE ||--o{ RTF_EVENT_COLUMNS : contains
+    
+    IDENTITYSTORE_PG_DB ||--o{ IDENTITY_STORE_TABLE : has
+    IDENTITY_STORE_TABLE ||--o{ IDENTITY_STORE_COLUMNS : contains
+    
+    ENTITYSTORE_DB ||--o{ LEGALENTITY_TABLE : has
+    ENTITYSTORE_DB ||--o{ COUNTERPARTYENTITY_TABLE : has
+    LEGALENTITY_TABLE ||--o{ LEGALENTITY_COLUMNS : contains
+    COUNTERPARTYENTITY_TABLE ||--o{ COUNTERPARTYENTITY_COLUMNS : contains
