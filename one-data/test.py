@@ -1,5 +1,8 @@
 import json
 import re
+import os
+import sys
+from pathlib import Path
 from typing import Dict, List, Optional
 
 class MermaidERGenerator:
@@ -183,60 +186,119 @@ class MermaidERGenerator:
             return "unknown_column"
         return re.sub(r'[^a-z0-9_.]', '_', text.lower()).strip('_')
 
-# Utility functions for easy usage
-def generate_all_databases_diagram(json_file_path: str) -> str:
-    """Generate complete diagram from JSON file"""
-    with open(json_file_path, 'r') as f:
-        json_data = f.read()
+def process_local_spec(spec_path: str, output_dir: str = None) -> Dict[str, str]:
+    """
+    Process local spec.json file and generate all diagrams
     
-    generator = MermaidERGenerator()
-    return generator.generate_complete_diagram(json_data)
-
-def generate_database_diagram(json_file_path: str, database_name: str) -> str:
-    """Generate individual database diagram from JSON file"""
-    with open(json_file_path, 'r') as f:
-        json_data = f.read()
+    Args:
+        spec_path: Path to the spec.json file
+        output_dir: Directory to save output files (default: same as input file)
     
-    generator = MermaidERGenerator()
-    return generator.generate_individual_diagram(json_data, database_name)
-
-def save_diagram_to_file(diagram: str, output_file: str):
-    """Save diagram to file"""
-    with open(output_file, 'w') as f:
-        f.write(diagram)
-    print(f"Diagram saved to {output_file}")
-
-# Example usage
-if __name__ == "__main__":
-    # Example 1: Generate complete diagram
-    json_data = '''{"databases": [...]}'''  # Your JSON data here
-    generator = MermaidERGenerator()
+    Returns:
+        Dictionary with generated file paths
+    """
+    # Validate input file
+    spec_file = Path(spec_path)
+    if not spec_file.exists():
+        raise FileNotFoundError(f"Spec file not found: {spec_path}")
     
+    if not spec_file.suffix.lower() == '.json':
+        raise ValueError(f"Input file must be a JSON file, got: {spec_file.suffix}")
+    
+    # Set output directory
+    if output_dir is None:
+        output_dir = spec_file.parent
+    else:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Read JSON file
     try:
-        # Complete diagram
+        with open(spec_file, 'r', encoding='utf-8') as f:
+            json_data = f.read()
+    except Exception as e:
+        raise IOError(f"Error reading spec file: {e}")
+    
+    # Initialize generator
+    generator = MermaidERGenerator()
+    
+    # Generate complete diagram
+    try:
         complete_diagram = generator.generate_complete_diagram(json_data)
-        save_diagram_to_file(complete_diagram, "complete_diagram.mmd")
+        complete_output_path = output_dir / "complete_database_diagram.mmd"
         
-        # Individual database diagram
-        identity_diagram = generator.generate_individual_diagram(json_data, "IdentityStore")
-        save_diagram_to_file(identity_diagram, "identitystore_diagram.mmd")
+        with open(complete_output_path, 'w', encoding='utf-8') as f:
+            f.write(complete_diagram)
         
-        print("Diagrams generated successfully!")
+        print(f"✓ Complete diagram saved: {complete_output_path}")
         
     except Exception as e:
-        print(f"Error: {e}")
+        raise RuntimeError(f"Error generating complete diagram: {e}")
+    
+    # Parse databases for individual diagrams
+    try:
+        data = json.loads(json_data)
+        databases = generator._parse_databases(data.get('databases', []))
+        
+        individual_files = {}
+        
+        for db in databases:
+            db_name = db['name']
+            try:
+                individual_diagram = generator.generate_individual_diagram(json_data, db_name)
+                individual_output_path = output_dir / f"{db_name.lower()}_diagram.mmd"
+                
+                with open(individual_output_path, 'w', encoding='utf-8') as f:
+                    f.write(individual_diagram)
+                
+                individual_files[db_name] = str(individual_output_path)
+                print(f"✓ {db_name} diagram saved: {individual_output_path}")
+                
+            except Exception as e:
+                print(f"⚠ Warning: Could not generate diagram for {db_name}: {e}")
+                continue
+        
+        return {
+            'complete_diagram': str(complete_output_path),
+            'individual_diagrams': individual_files,
+            'total_databases': len(databases),
+            'successful_individual': len(individual_files)
+        }
+        
+    except Exception as e:
+        raise RuntimeError(f"Error processing individual diagrams: {e}")
 
-# One-liner functions for quick usage
-def quick_generate_all(json_path: str, output_path: str = "diagram.mmd"):
-    """One-liner to generate complete diagram"""
-    diagram = generate_all_databases_diagram(json_path)
-    save_diagram_to_file(diagram, output_path)
-    return diagram
+def main():
+    """Command line interface"""
+    if len(sys.argv) < 2:
+        print("Usage: python mermaid_generator.py <spec.json> [output_directory]")
+        print("Example: python mermaid_generator.py ./spec1.json ./output/")
+        sys.exit(1)
+    
+    spec_path = sys.argv[1]
+    output_dir = sys.argv[2] if len(sys.argv) > 2 else None
+    
+    try:
+        print(f"Processing spec file: {spec_path}")
+        results = process_local_spec(spec_path, output_dir)
+        
+        print(f"\n🎉 Success! Generated diagrams:")
+        print(f"📊 Complete diagram: {results['complete_diagram']}")
+        print(f"📈 Individual diagrams: {results['successful_individual']}/{results['total_databases']}")
+        
+        if results['individual_diagrams']:
+            print("\nIndividual database diagrams:")
+            for db_name, file_path in results['individual_diagrams'].items():
+                print(f"  • {db_name}: {file_path}")
+                
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
 
-def quick_generate_db(json_path: str, db_name: str, output_path: str = None):
-    """One-liner to generate specific database diagram"""
-    if output_path is None:
-        output_path = f"{db_name.lower()}_diagram.mmd"
-    diagram = generate_database_diagram(json_path, db_name)
-    save_diagram_to_file(diagram, output_path)
-    return diagram
+# Quick utility functions (keep for backwards compatibility)
+def quick_generate_from_local_spec(spec_path: str):
+    """Quick one-liner to process local spec file"""
+    return process_local_spec(spec_path)
+
+if __name__ == "__main__":
+    main()
