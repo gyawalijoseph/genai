@@ -3,7 +3,7 @@ erDiagram
         string application_id "500000383"
     }
     
-    %% IdentityStore Database
+    %% 1. IdentityStore Database
     IDENTITYSTORE_DB {
         string database_name "IdentityStore"
         string database_type "Couchbase"
@@ -81,7 +81,7 @@ erDiagram
         string mnl_Lnk_cd "read|string"
     }
     
-    %% CustomerDB Database
+    %% 2. CustomerDB Database
     CUSTOMERDB_DB {
         string database_name "customerdb"
         string database_type "PostgreSQL"
@@ -97,7 +97,7 @@ erDiagram
         unknown email "write,update|unknown"
     }
     
-    %% Analytics Database
+    %% 3. Analytics Database
     ANALYTICS_DB {
         string database_name "analytics"
         string database_type "MongoDB"
@@ -121,7 +121,7 @@ erDiagram
         string user "write|string"
     }
     
-    %% Contact Profile Database
+    %% 4. Contact Profile Database
     CONTACT_PROFILE_DB {
         string database_name "contact_profile"
         string database_type "unknown"
@@ -148,7 +148,28 @@ erDiagram
         unknown typ "read|unknown"
     }
     
-    %% Identity Profile Database
+    ESTATEMENT_TABLE {
+        string table_name "estatement"
+    }
+    
+    ESTATEMENT_COLUMNS {
+        unknown bounce_bk_dt "read|unknown"
+        unknown bounce_bk_ind "read|unknown"
+        unknown dsgntn_src "read|unknown"
+        unknown dsgntn_ts "read|unknown"
+        unknown dsgntn_typ "read|unknown"
+        unknown email_ad "read|unknown"
+        unknown hash_nbr "read|unknown"
+        unknown lst_updt_src "read|unknown"
+        unknown lst_updt_ts "read|unknown"
+        unknown lst_verf_src "read|unknown"
+        unknown lst_verf_ts "read|unknown"
+        unknown lst_verf_usr "read|unknown"
+        unknown verf_sta "read|unknown"
+        unknown typ "read|unknown"
+    }
+    
+    %% 5. Identity Profile Database
     IDENTITY_PROFILE_DB {
         string database_name "identity_profile"
         string database_type "unknown"
@@ -166,7 +187,22 @@ erDiagram
         unknown secondary "read|unknown"
     }
     
-    %% Digital Profile Database  
+    RELATIONSHIP_NAMES_TABLE {
+        string table_name "relationship_names"
+    }
+    
+    RELATIONSHIP_NAMES_COLUMNS {
+        unknown first_nm "read|unknown"
+        unknown full_nm "read|unknown"
+        unknown lst_nm "read|unknown"
+        unknown lst_updt_src "read|unknown"
+        unknown lst_updt_ts "read|unknown"
+        unknown mid_nm "read|unknown"
+        unknown nm_lang_ind "read|unknown"
+        unknown typ "read|unknown"
+    }
+    
+    %% 6. Digital Profile Database  
     DIGITAL_PROFILE_DB {
         string database_name "digital_profile"
         string database_type "unknown"
@@ -193,7 +229,22 @@ erDiagram
         unknown typ "read|unknown"
     }
     
-    %% DataCacheStore Database
+    %% 7. IdentityStore_Hiped Database
+    IDENTITYSTORE_HIPED_DB {
+        string database_name "IdentityStore_Hiped"
+        string database_type "Couchbase"
+    }
+    
+    IDENTITYSTORE_HIPED_TABLE {
+        string table_name "IdentityStore_Hiped"
+    }
+    
+    IDENTITYSTORE_HIPED_COLUMNS {
+        string id "read|string"
+        string meta_id "read|string"
+    }
+    
+    %% 8. DataCacheStore Database
     DATACACHESTORE_DB {
         string database_name "DataCacheStore"
         string database_type "Couchbase"
@@ -220,27 +271,43 @@ erDiagram
         array profiles "read|array"
     }
     
-    %% RTF Database
-    RTF_DB {
-        string database_name "rtf"
+    C360_CUSTOMER_TABLE {
+        string table_name "C360.Customer"
+    }
+    
+    C360_CUSTOMER_COLUMNS {
+        string meta_id "read|string"
+    }
+    
+    C360_ACCOUNT_TABLE {
+        string table_name "C360.Account"
+    }
+    
+    C360_ACCOUNT_COLUMNS {
+        string meta_id "read|string"
+    }
+    
+    %% 9. RTFDB Database
+    RTFDB_DB {
+        string database_name "rtfdb"
         string database_type "PostgreSQL"
     }
     
-    RTF_EVENT_TABLE {
-        string table_name "rtf_event"
+    RTFDB_EMPTY {
+        string status "No entities defined"
     }
     
-    RTF_EVENT_COLUMNS {
-        string event_id "write,update|string"
-        string row_key_tx "write|string"
-        string amex_correlation_id "write|string"
-        string header_tx "write,update|string"
-        string payload_tx "write,update|string"
-        timestamp create_ts "write|timestamp"
-        string publish_status_cd "update|string"
+    %% 10. IdentityStoreDB Database
+    IDENTITYSTOREDB_DB {
+        string database_name "identitystoredb"
+        string database_type "PostgreSQL"
     }
     
-    %% IdentityStore PostgreSQL
+    IDENTITYSTOREDB_EMPTY {
+        string status "No entities defined"
+    }
+    
+    %% 11. IdentityStore PostgreSQL Database
     IDENTITYSTORE_PG_DB {
         string database_name "identitystore"
         string database_type "PostgreSQL"
@@ -262,10 +329,52 @@ erDiagram
         text rel_id "read|text"
     }
     
-    %% EntityStore Database
+    %% 12. RTF Database
+    RTF_DB {
+        string database_name "rtf"
+        string database_type "PostgreSQL"
+    }
+    
+    RTF_EVENT_TABLE {
+        string table_name "rtf_event"
+    }
+    
+    RTF_EVENT_COLUMNS {
+        string event_id "write,update|string"
+        string row_key_tx "write|string"
+        string amex_correlation_id "write|string"
+        string header_tx "write,update|string"
+        string payload_tx "write,update|string"
+        timestamp create_ts "write|timestamp"
+        string publish_status_cd "update|string"
+    }
+    
+    %% 13. DATA_CACHE_STORE_BUCKET Database
+    DATA_CACHE_STORE_BUCKET_DB {
+        string database_name "DATA_CACHE_STORE_BUCKET"
+        string database_type "unknown"
+    }
+    
+    DATA_CACHE_STORE_BUCKET_TABLE {
+        string table_name "DATA_CACHE_STORE_BUCKET"
+    }
+    
+    DATA_CACHE_STORE_BUCKET_COLUMNS {
+        string key "read,write,delete|string"
+    }
+    
+    %% 14. EntityStore_Hiped Database
     ENTITYSTORE_DB {
         string database_name "EntityStore_Hiped"
         string database_type "COUCHBASE"
+    }
+    
+    DEFAULT_DEFAULT_TABLE {
+        string table_name "_default._default"
+    }
+    
+    DEFAULT_DEFAULT_COLUMNS {
+        string id "delete|string"
     }
     
     LEGALENTITY_TABLE {
@@ -286,6 +395,16 @@ erDiagram
         string ultimate_parent_identifier "read|string"
     }
     
+    %% 15. EventLogDB Database
+    EVENTLOGDB_DB {
+        string database_name "eventlogdb"
+        string database_type "PostgreSQL"
+    }
+    
+    EVENTLOGDB_EMPTY {
+        string status "No entities defined"
+    }
+    
     %% Relationships
     APPLICATION_500000383 ||--o{ IDENTITYSTORE_DB : contains
     APPLICATION_500000383 ||--o{ CUSTOMERDB_DB : contains
@@ -293,48 +412,86 @@ erDiagram
     APPLICATION_500000383 ||--o{ CONTACT_PROFILE_DB : contains
     APPLICATION_500000383 ||--o{ IDENTITY_PROFILE_DB : contains
     APPLICATION_500000383 ||--o{ DIGITAL_PROFILE_DB : contains
+    APPLICATION_500000383 ||--o{ IDENTITYSTORE_HIPED_DB : contains
     APPLICATION_500000383 ||--o{ DATACACHESTORE_DB : contains
-    APPLICATION_500000383 ||--o{ RTF_DB : contains
+    APPLICATION_500000383 ||--o{ RTFDB_DB : contains
+    APPLICATION_500000383 ||--o{ IDENTITYSTOREDB_DB : contains
     APPLICATION_500000383 ||--o{ IDENTITYSTORE_PG_DB : contains
+    APPLICATION_500000383 ||--o{ RTF_DB : contains
+    APPLICATION_500000383 ||--o{ DATA_CACHE_STORE_BUCKET_DB : contains
     APPLICATION_500000383 ||--o{ ENTITYSTORE_DB : contains
+    APPLICATION_500000383 ||--o{ EVENTLOGDB_DB : contains
     
+    %% Database to Table relationships
     IDENTITYSTORE_DB ||--o{ IDENTITYSTORE_TABLE : has
     IDENTITYSTORE_DB ||--o{ ACCOUNT_TABLE : has
     IDENTITYSTORE_DB ||--o{ CUSTOMER_TABLE : has
     
+    CUSTOMERDB_DB ||--o{ CUSTOMERS_TABLE : has
+    
+    ANALYTICS_DB ||--o{ USER_EVENTS_TABLE : has
+    ANALYTICS_DB ||--o{ EVENTS_TABLE : has
+    
+    CONTACT_PROFILE_DB ||--o{ BUSINESS_TABLE : has
+    CONTACT_PROFILE_DB ||--o{ ESTATEMENT_TABLE : has
+    
+    IDENTITY_PROFILE_DB ||--o{ NATIONALITY_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ RELATIONSHIP_NAMES_TABLE : has
+    
+    DIGITAL_PROFILE_DB ||--o{ IP_ADDRESSES_TABLE : has
+    DIGITAL_PROFILE_DB ||--o{ DEVICES_TABLE : has
+    
+    IDENTITYSTORE_HIPED_DB ||--o{ IDENTITYSTORE_HIPED_TABLE : has
+    
+    DATACACHESTORE_DB ||--o{ DATACACHESTORE_TABLE : has
+    DATACACHESTORE_DB ||--o{ C360_CUSTOMER_TABLE : has
+    DATACACHESTORE_DB ||--o{ C360_ACCOUNT_TABLE : has
+    
+    RTFDB_DB ||--o{ RTFDB_EMPTY : has
+    IDENTITYSTOREDB_DB ||--o{ IDENTITYSTOREDB_EMPTY : has
+    EVENTLOGDB_DB ||--o{ EVENTLOGDB_EMPTY : has
+    
+    IDENTITYSTORE_PG_DB ||--o{ IDENTITY_STORE_TABLE : has
+    
+    RTF_DB ||--o{ RTF_EVENT_TABLE : has
+    
+    DATA_CACHE_STORE_BUCKET_DB ||--o{ DATA_CACHE_STORE_BUCKET_TABLE : has
+    
+    ENTITYSTORE_DB ||--o{ DEFAULT_DEFAULT_TABLE : has
+    ENTITYSTORE_DB ||--o{ LEGALENTITY_TABLE : has
+    ENTITYSTORE_DB ||--o{ COUNTERPARTYENTITY_TABLE : has
+    
+    %% Table to Column relationships
     IDENTITYSTORE_TABLE ||--o{ IDENTITYSTORE_COLUMNS : contains
     ACCOUNT_TABLE ||--o{ ACCOUNT_COLUMNS : contains
     CUSTOMER_TABLE ||--o{ CUSTOMER_COLUMNS : contains
     
-    CUSTOMERDB_DB ||--o{ CUSTOMERS_TABLE : has
     CUSTOMERS_TABLE ||--o{ CUSTOMERS_COLUMNS : contains
     
-    ANALYTICS_DB ||--o{ USER_EVENTS_TABLE : has
-    ANALYTICS_DB ||--o{ EVENTS_TABLE : has
     USER_EVENTS_TABLE ||--o{ USER_EVENTS_COLUMNS : contains
     EVENTS_TABLE ||--o{ EVENTS_COLUMNS : contains
     
-    CONTACT_PROFILE_DB ||--o{ BUSINESS_TABLE : has
     BUSINESS_TABLE ||--o{ BUSINESS_COLUMNS : contains
+    ESTATEMENT_TABLE ||--o{ ESTATEMENT_COLUMNS : contains
     
-    IDENTITY_PROFILE_DB ||--o{ NATIONALITY_TABLE : has
     NATIONALITY_TABLE ||--o{ NATIONALITY_COLUMNS : contains
+    RELATIONSHIP_NAMES_TABLE ||--o{ RELATIONSHIP_NAMES_COLUMNS : contains
     
-    DIGITAL_PROFILE_DB ||--o{ IP_ADDRESSES_TABLE : has
-    DIGITAL_PROFILE_DB ||--o{ DEVICES_TABLE : has
     IP_ADDRESSES_TABLE ||--o{ IP_ADDRESSES_COLUMNS : contains
     DEVICES_TABLE ||--o{ DEVICES_COLUMNS : contains
     
-    DATACACHESTORE_DB ||--o{ DATACACHESTORE_TABLE : has
+    IDENTITYSTORE_HIPED_TABLE ||--o{ IDENTITYSTORE_HIPED_COLUMNS : contains
+    
     DATACACHESTORE_TABLE ||--o{ DATACACHESTORE_COLUMNS : contains
+    C360_CUSTOMER_TABLE ||--o{ C360_CUSTOMER_COLUMNS : contains
+    C360_ACCOUNT_TABLE ||--o{ C360_ACCOUNT_COLUMNS : contains
     
-    RTF_DB ||--o{ RTF_EVENT_TABLE : has
-    RTF_EVENT_TABLE ||--o{ RTF_EVENT_COLUMNS : contains
-    
-    IDENTITYSTORE_PG_DB ||--o{ IDENTITY_STORE_TABLE : has
     IDENTITY_STORE_TABLE ||--o{ IDENTITY_STORE_COLUMNS : contains
     
-    ENTITYSTORE_DB ||--o{ LEGALENTITY_TABLE : has
-    ENTITYSTORE_DB ||--o{ COUNTERPARTYENTITY_TABLE : has
+    RTF_EVENT_TABLE ||--o{ RTF_EVENT_COLUMNS : contains
+    
+    DATA_CACHE_STORE_BUCKET_TABLE ||--o{ DATA_CACHE_STORE_BUCKET_COLUMNS : contains
+    
+    DEFAULT_DEFAULT_TABLE ||--o{ DEFAULT_DEFAULT_COLUMNS : contains
     LEGALENTITY_TABLE ||--o{ LEGALENTITY_COLUMNS : contains
     COUNTERPARTYENTITY_TABLE ||--o{ COUNTERPARTYENTITY_COLUMNS : contains
