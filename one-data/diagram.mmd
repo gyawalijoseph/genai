@@ -1,0 +1,839 @@
+erDiagram
+    APPLICATION_500000383 {
+        string application_id "500000383"
+    }
+
+    %% IdentityStore Database
+    IDENTITYSTORE_DB {
+        string database_name "IdentityStore"
+        string database_type "Couchbase"
+    }
+
+    IDENTITYSTORE_TABLE {
+        string table_name "IdentityStore"
+    }
+
+    IDENTITYSTORE_COLUMNS {
+        string street_ln_1 "R"
+        string postal_cd "R"
+        string id "R"
+        array gov_doc_ids "R"
+        array phones "R"
+        array email_addresses "R"
+        string id_last_4 "R"
+        string first_nm_first_3 "R"
+        string lst_nm_first_4 "R"
+        int yob "R"
+        string postal_cd_first_5 "R"
+        string glbl_id "R"
+        object business_ids "R"
+        object obligor "R"
+        string legal "R"
+        string parent "R"
+        string parent_acct "R"
+        string acct_id "R"
+        int create_epoch_val "R"
+        int epoch_val "R"
+        string cm15 "R"
+        string pcn "R"
+        string cm13 "R"
+        string typ "R"
+        timestamp lst_updt_ts "R"
+        string rel_id "R"
+    }
+
+    ACCOUNT_TABLE {
+        string table_name "account"
+    }
+
+    ACCOUNT_COLUMNS {
+        string identifiers_acct_id "R"
+        string identifiers_card_cm13 "R"
+        string identifiers_card_cm15 "R"
+        string identifiers_alt_acct_id "R"
+        string identifiers_clnt_origin_id "R"
+        json identifiers_external "U"
+        json identifiers_external_ids "U"
+        string typ_ctgy_typ_cd "R"
+        string typ_bu_cd "R"
+        string typ "R"
+        string status_cd "R"
+        string status_purge_ind "R"
+        json status "U"
+    }
+
+    CUSTOMER_TABLE {
+        string table_name "customer"
+    }
+
+    CUSTOMER_COLUMNS {
+        string id "R"
+        string business_ids_id "R"
+        string business_ids_obligor_id "R"
+        string business_ids_conglomerate_id_id "R"
+        string business_ids_counterparty_identifier_details_id "R"
+        json identifiers_external_dnb_information "U"
+        json external_ids_dnb "U"
+        array identifiers_external_pin_information "U"
+        array external_ids_pin "U"
+        json evaluation_details "U"
+        json business_ids_obligor_eval_dtls "U"
+        string eval_details_mnl_lnk_cd "R"
+    }
+
+    IDENTITY_PROFILE_TABLE {
+        string table_name "identity_profile"
+    }
+
+    IDENTITY_PROFILE_COLUMNS {
+        json individual_information "U"
+        json individual_name "U"
+        json birth_information "U"
+        json date_of_birth "U"
+        json gender "U"
+        json embossed_information "U"
+        json emb_nm_individual "U"
+        json business_information "U"
+        json business_name_legal "U"
+        json business_name_obligor "R"
+        json business_name_obligor_nm "R"
+        array government_document_identity "U"
+        array gov_doc_ids "U"
+    }
+
+    CONTACT_PROFILE_TABLE {
+        string table_name "contact_profile"
+    }
+
+    CONTACT_PROFILE_COLUMNS {
+        array postal_addresses "U"
+        array addresses "U"
+        array email_addresses "U"
+        array telephones "U"
+    }
+
+    BANK_ACCOUNT_DETAILS_TABLE {
+        string table_name "bank_account_details"
+    }
+
+    BANK_ACCOUNT_DETAILS_COLUMNS {
+        array bank_accounts "U"
+    }
+
+    REL_ID_TABLE {
+        string table_name "rel_id"
+    }
+
+    REL_ID_COLUMNS {
+        string rel_id "R"
+    }
+
+    %% customerdb Database
+    CUSTOMERDB_DB {
+        string database_name "customerdb"
+        string database_type "PostgreSQL"
+    }
+
+    CUSTOMERS_TABLE {
+        string table_name "customers"
+    }
+
+    CUSTOMERS_COLUMNS {
+        unknown id "CRUD"
+        unknown name "C"
+        unknown email "CU"
+    }
+
+    CUSTOMERS_1_TABLE {
+        string table_name "customers_1"
+    }
+
+    CUSTOMERS_1_COLUMNS {
+        integer id "RUD"
+        string name "C"
+        string email "CU"
+    }
+
+    %% analytics Database
+    ANALYTICS_DB {
+        string database_name "analytics"
+        string database_type "MongoDB"
+    }
+
+    USER_EVENTS_TABLE {
+        string table_name "user_events"
+    }
+
+    USER_EVENTS_COLUMNS {
+        unknown userid "CR"
+        unknown event "C"
+    }
+
+    EVENTS_TABLE {
+        string table_name "events"
+    }
+
+    EVENTS_COLUMNS {
+        string type "CR"
+        string user "C"
+    }
+
+    %% contact_profile Database
+    CONTACT_PROFILE_DB {
+        string database_name "contact_profile"
+        string database_type "unknown"
+    }
+
+    BUSINESS_TABLE {
+        string table_name "business"
+    }
+
+    BUSINESS_COLUMNS {
+        unknown bounce_bk_dt "R"
+        unknown bounce_bk_ind "R"
+        unknown dsgntn_src "R"
+        unknown dsgntn_ts "R"
+        unknown dsgntn_typ "R"
+        unknown email_ad "R"
+        unknown hash_email_hash_nbr "R"
+        unknown hash_email_lst_updt_src "R"
+        unknown hash_email_lst_updt_ts "R"
+        unknown lst_verf_src "R"
+        unknown lst_verf_ts "R"
+        unknown lst_verf_usr "R"
+        unknown verf_sta "R"
+        unknown typ "R"
+    }
+
+    ESTATEMENT_TABLE {
+        string table_name "estatement"
+    }
+
+    ESTATEMENT_COLUMNS {
+        unknown bounce_bk_dt "R"
+        unknown bounce_bk_ind "R"
+        unknown dsgntn_src "R"
+        unknown dsgntn_ts "R"
+        unknown dsgntn_typ "R"
+        unknown email_ad "R"
+        unknown hash_email_hash_nbr "R"
+        unknown hash_email_lst_updt_src "R"
+        unknown hash_email_lst_updt_ts "R"
+        unknown lst_verf_src "R"
+        unknown lst_verf_ts "R"
+        unknown lst_verf_usr "R"
+        unknown verf_sta "R"
+        unknown typ "R"
+    }
+
+    OTHER_TABLE {
+        string table_name "other"
+    }
+
+    OTHER_COLUMNS {
+        unknown bounce_bk_dt "R"
+        unknown bounce_bk_ind "R"
+        unknown dsgntn_src "R"
+        unknown dsgntn_ts "R"
+        unknown dsgntn_typ "R"
+        unknown email_ad "R"
+        unknown hash_email_hash_nbr "R"
+        unknown hash_email_lst_updt_src "R"
+        unknown hash_email_lst_updt_ts "R"
+        unknown lst_verf_src "R"
+        unknown lst_verf_ts "R"
+        unknown lst_verf_usr "R"
+        unknown verf_sta "R"
+        unknown typ "R"
+    }
+
+    SECURITY_TABLE {
+        string table_name "security"
+    }
+
+    SECURITY_COLUMNS {
+        unknown bounce_bk_dt "R"
+        unknown bounce_bk_ind "R"
+        unknown dsgntn_src "R"
+        unknown dsgntn_ts "R"
+        unknown dsgntn_typ "R"
+        unknown email_ad "R"
+        unknown hash_email_hash_nbr "R"
+        unknown hash_email_lst_updt_src "R"
+        unknown hash_email_lst_updt_ts "R"
+        unknown lst_verf_src "R"
+        unknown lst_verf_ts "R"
+        unknown lst_verf_usr "R"
+        unknown verf_sta "R"
+        unknown typ "R"
+    }
+
+    SERVICING_TABLE {
+        string table_name "servicing"
+    }
+
+    SERVICING_COLUMNS {
+        unknown bounce_bk_dt "R"
+        unknown bounce_bk_ind "R"
+        unknown dsgntn_src "R"
+        unknown dsgntn_ts "R"
+        unknown dsgntn_typ "R"
+        unknown email_ad "R"
+        unknown hash_email_hash_nbr "R"
+        unknown hash_email_lst_updt_src "R"
+        unknown hash_email_lst_updt_ts "R"
+        unknown lst_verf_ts "R"
+        unknown lst_verf_src "R"
+        unknown lst_verf_usr "R"
+        unknown verf_sta "R"
+        unknown typ "R"
+    }
+
+    %% identity_profile Database
+    IDENTITY_PROFILE_DB {
+        string database_name "identity_profile"
+        string database_type "unknown"
+    }
+
+    NATIONALITY_TABLE {
+        string table_name "nationality"
+    }
+
+    NATIONALITY_COLUMNS {
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+        unknown primary "R"
+        unknown residential_status "R"
+        unknown secondary "R"
+    }
+
+    RELATIONSHIP_NAMES_TABLE {
+        string table_name "relationship_names"
+    }
+
+    RELATIONSHIP_NAMES_COLUMNS {
+        unknown first_nm "R"
+        unknown full_nm "R"
+        unknown lst_nm "R"
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+        unknown mid_nm "R"
+        unknown nm_lang_ind "R"
+        unknown typ "R"
+    }
+
+    EXTERNAL_TABLE {
+        string table_name "external"
+    }
+
+    EXTERNAL_COLUMNS {
+        unknown first_nm "R"
+        unknown full_nm "R"
+        unknown lst_nm "R"
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+        unknown nm_lang_ind "R"
+        unknown mid_nm "R"
+        unknown pfx_nm "R"
+        unknown suff_nm "R"
+        unknown title "R"
+    }
+
+    OTHER_TABLE {
+        string table_name "other"
+    }
+
+    OTHER_COLUMNS {
+        unknown addtl_lst_nm "R"
+        unknown typ "R"
+        unknown title "R"
+        unknown suff_nm "R"
+        unknown processed_first_nm "R"
+        unknown processed_full_nm "R"
+        unknown processed_lst_nm "R"
+        unknown processed_mid_nm "R"
+        unknown processed_std_first_nm_ind "R"
+        unknown processed_std_full_nm_ind "R"
+        unknown processed_std_lst_nm_ind "R"
+        unknown processed_std_mid_nm_ind "R"
+        unknown pfx_nm "R"
+        unknown mid_nm "R"
+        unknown lst_updt_usr "R"
+        unknown lst_updt_ts "R"
+        unknown lst_updt_src "R"
+        unknown lst_nm "R"
+        unknown full_nm "R"
+        unknown first_nm "R"
+    }
+
+    PRIMARY_TABLE {
+        string table_name "primary"
+    }
+
+    PRIMARY_COLUMNS {
+        unknown addtl_lst_nm "R"
+        unknown first_nm "R"
+        unknown title "R"
+        unknown suff_nm "R"
+        unknown processed_first_nm "R"
+        unknown processed_full_nm "R"
+        unknown processed_lst_nm "R"
+        unknown processed_mid_nm "R"
+        unknown processed_std_first_nm_ind "R"
+        unknown processed_std_full_nm_ind "R"
+        unknown processed_std_lst_nm_ind "R"
+        unknown processed_std_mid_nm_ind "R"
+        unknown smrt_demo_updt_ts "R"
+        unknown smrt_demo_flg "R"
+        unknown pfx_nm "R"
+        unknown prfrd_first_nm "R"
+        unknown nm_lang_ind "R"
+        unknown mid_nm "R"
+        unknown lst_updt_usr "R"
+        unknown lst_updt_ts "R"
+        unknown lst_updt_src "R"
+        unknown lst_nm "R"
+        unknown initials "R"
+        unknown full_nm "R"
+    }
+
+    SECONDARY_TABLE {
+        string table_name "secondary"
+    }
+
+    SECONDARY_COLUMNS {
+        unknown addtl_lst_nm "R"
+        unknown first_nm "R"
+        unknown initials "R"
+        unknown full_nm "R"
+        unknown lst_nm "R"
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+        unknown lst_updt_usr "R"
+        unknown mid_nm "R"
+        unknown nm_lang_ind "R"
+        unknown prfrd_first_nm "R"
+        unknown pfx_nm "R"
+        unknown smrt_demo_flg "R"
+        unknown smrt_demo_updt_ts "R"
+        unknown processed_full_nm "R"
+        unknown processed_first_nm "R"
+        unknown processed_std_mid_nm_ind "R"
+        unknown processed_std_lst_nm_ind "R"
+        unknown processed_mid_nm "R"
+        unknown processed_lst_nm "R"
+        unknown processed_std_first_nm_ind "R"
+        unknown processed_std_full_nm_ind "R"
+        unknown suff_nm "R"
+        unknown title "R"
+    }
+
+    COMPANY_TABLE {
+        string table_name "company"
+    }
+
+    COMPANY_COLUMNS {
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+        unknown nm "R"
+        unknown smrt_demo_flg "R"
+        unknown smrt_demo_updt_ts "R"
+        unknown processed_nm "R"
+        unknown processed_std_ind "R"
+    }
+
+    INDIVIDUAL_TABLE {
+        string table_name "individual"
+    }
+
+    INDIVIDUAL_COLUMNS {
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+        unknown nm "R"
+        unknown smrt_demo_flg "R"
+        unknown smrt_demo_updt_ts "R"
+        unknown processed_nm "R"
+        unknown processed_std_ind "R"
+    }
+
+    %% digital_profile Database
+    DIGITAL_PROFILE_DB {
+        string database_name "digital_profile"
+        string database_type "unknown"
+    }
+
+    IP_ADDRESSES_TABLE {
+        string table_name "ip_addresses"
+    }
+
+    IP_ADDRESSES_COLUMNS {
+        unknown ip "R"
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+    }
+
+    IP_ADDRESSES_PROCESSED_TABLE {
+        string table_name "ip_addresses.processed"
+    }
+
+    IP_ADDRESSES_PROCESSED_COLUMNS {
+        unknown ip "R"
+        unknown std_ind "R"
+    }
+
+    DEVICES_TABLE {
+        string table_name "devices"
+    }
+
+    DEVICES_COLUMNS {
+        unknown id "R"
+        unknown lst_updt_src "R"
+        unknown lst_updt_ts "R"
+        unknown typ "R"
+    }
+
+    DEVICES_PROCESSED_TABLE {
+        string table_name "devices.processed"
+    }
+
+    DEVICES_PROCESSED_COLUMNS {
+        unknown id "R"
+        unknown std_ind "R"
+    }
+
+    %% IdentityStore_Hiped Database
+    IDENTITYSTORE_HIPED_DB {
+        string database_name "IdentityStore_Hiped"
+        string database_type "Couchbase"
+    }
+
+    IDENTITYSTORE_HIPED_TABLE {
+        string table_name "IdentityStore_Hiped"
+    }
+
+    IDENTITYSTORE_HIPED_COLUMNS {
+        string id "R"
+        string meta___id "R"
+    }
+
+    IDENTITYSTORE_HIPED_1_TABLE {
+        string table_name "IdentityStore_Hiped_1"
+    }
+
+    IDENTITYSTORE_HIPED_1_COLUMNS {
+        string id "R"
+    }
+
+    IDENTITYSTORE_HIPED_2_TABLE {
+        string table_name "IdentityStore_Hiped_2"
+    }
+
+    IDENTITYSTORE_HIPED_2_COLUMNS {
+        string status "No columns defined"
+    }
+
+    %% DataCacheStore Database
+    DATACACHESTORE_DB {
+        string database_name "DataCacheStore"
+        string database_type "Couchbase"
+    }
+
+    DATACACHESTORE_TABLE {
+        string table_name "DataCacheStore"
+    }
+
+    DATACACHESTORE_COLUMNS {
+        string id "R"
+    }
+
+    DATACACHESTORE_1_TABLE {
+        string table_name "DataCacheStore_1"
+    }
+
+    DATACACHESTORE_1_COLUMNS {
+        string meta___id "R"
+        string levelid "R"
+        string acctid "R"
+        string parentacct "R"
+        string idtype "R"
+        string altacctid "R"
+        boolean purgeind "R"
+        string rel_id "R"
+        string account_identifiers_card_cm13 "R"
+        string account_identifiers_card_cm11 "R"
+        string account_identifiers_corp_id "R"
+        string account_identifiers_clnt_origin_id "R"
+        string account_typ_ctgy_typ_cd "R"
+        array customer_profiles "R"
+    }
+
+    DATACACHESTORE_C360_CUSTOMER_TABLE {
+        string table_name "DataCacheStore.C360.Customer"
+    }
+
+    DATACACHESTORE_C360_CUSTOMER_COLUMNS {
+        string meta___id "R"
+    }
+
+    DATACACHESTORE_C360_ACCOUNT_TABLE {
+        string table_name "DataCacheStore.C360.Account"
+    }
+
+    DATACACHESTORE_C360_ACCOUNT_COLUMNS {
+        string meta___id "R"
+    }
+
+    %% identitystore Database
+    IDENTITYSTORE_DB {
+        string database_name "identitystore"
+        string database_type "PostgreSQL"
+    }
+
+    IDENTITY_STORE_TABLE {
+        string table_name "identity_store"
+    }
+
+    IDENTITY_STORE_COLUMNS {
+        string id_store_row_key_id "R"
+        string identity_doc_tx "R"
+    }
+
+    IDENTITY_STORE_1_TABLE {
+        string table_name "identity_store_1"
+    }
+
+    IDENTITY_STORE_1_COLUMNS {
+        uuid id_store_row_key_id "R"
+        jsonb identity_doc_tx "R"
+        text acctid "R"
+        text levelid "R"
+        text parentacct "R"
+        text idtype "R"
+        text altacctid "R"
+        boolean purgeind "R"
+        text rel_id "R"
+    }
+
+    %% rtf Database
+    RTF_DB {
+        string database_name "rtf"
+        string database_type "PostgreSQL"
+    }
+
+    RTF_EVENT_TABLE {
+        string table_name "rtf_event"
+    }
+
+    RTF_EVENT_COLUMNS {
+        string event_id "C"
+        string row_key_tx "C"
+        string amex_correlation_id "C"
+        string header_tx "C"
+        string payload_tx "C"
+        timestamp create_ts "C"
+        string publish_status_cd "C"
+    }
+
+    RTF_RTF_EVENT_TABLE {
+        string table_name "rtf.rtf_event"
+    }
+
+    RTF_RTF_EVENT_COLUMNS {
+        unknown event_id "CU"
+        unknown row_key_tx "C"
+        unknown amex_correlation_id "C"
+        unknown header_tx "CU"
+        unknown payload_tx "CU"
+        unknown create_ts "C"
+        unknown publish_status_cd "U"
+    }
+
+    %% DATA_CACHE_STORE_BUCKET Database
+    DATA_CACHE_STORE_BUCKET_DB {
+        string database_name "DATA_CACHE_STORE_BUCKET"
+        string database_type "unknown"
+    }
+
+    DATA_CACHE_STORE_BUCKET_TABLE {
+        string table_name "DATA_CACHE_STORE_BUCKET"
+    }
+
+    DATA_CACHE_STORE_BUCKET_COLUMNS {
+        string key "CRD"
+    }
+
+    %% EntityStore_Hiped Database
+    ENTITYSTORE_HIPED_DB {
+        string database_name "EntityStore_Hiped"
+        string database_type "COUCHBASE"
+    }
+
+    ENTITYSTORE_HIPED__DEFAULT__DEFAULT_TABLE {
+        string table_name "EntityStore_Hiped._default._default"
+    }
+
+    ENTITYSTORE_HIPED__DEFAULT__DEFAULT_COLUMNS {
+        string id "D"
+    }
+
+    ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_TABLE {
+        string table_name "EntityStore_Hiped.LegalEntity.Active"
+    }
+
+    ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_COLUMNS {
+        string id "RD"
+        string ultimate_parent_identifier "R"
+    }
+
+    ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_TABLE {
+        string table_name "EntityStore_Hiped.CounterpartyEntity.Active"
+    }
+
+    ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_COLUMNS {
+        string id "RD"
+        string ultimate_parent_identifier "R"
+    }
+
+    ENTITYSTORE_HIPED_TABLE {
+        string table_name "EntityStore_Hiped"
+    }
+
+    ENTITYSTORE_HIPED_COLUMNS {
+        string id "R"
+    }
+
+    ENTITYSTORE_HIPED_1_TABLE {
+        string table_name "EntityStore_Hiped_1"
+    }
+
+    ENTITYSTORE_HIPED_1_COLUMNS {
+        string meta___id "R"
+    }
+
+    ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_1_TABLE {
+        string table_name "EntityStore_Hiped.LegalEntity.Active_1"
+    }
+
+    ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_1_COLUMNS {
+        string meta___id "R"
+    }
+
+    ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_1_TABLE {
+        string table_name "EntityStore_Hiped.CounterpartyEntity.Active_1"
+    }
+
+    ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_1_COLUMNS {
+        string meta___id "R"
+    }
+
+    %% Relationships
+    APPLICATION_500000383 ||--o{ IDENTITYSTORE_DB : uses
+    APPLICATION_500000383 ||--o{ CUSTOMERDB_DB : uses
+    APPLICATION_500000383 ||--o{ ANALYTICS_DB : uses
+    APPLICATION_500000383 ||--o{ CONTACT_PROFILE_DB : uses
+    APPLICATION_500000383 ||--o{ IDENTITY_PROFILE_DB : uses
+    APPLICATION_500000383 ||--o{ DIGITAL_PROFILE_DB : uses
+    APPLICATION_500000383 ||--o{ IDENTITYSTORE_HIPED_DB : uses
+    APPLICATION_500000383 ||--o{ DATACACHESTORE_DB : uses
+    APPLICATION_500000383 ||--o{ IDENTITYSTORE_DB : uses
+    APPLICATION_500000383 ||--o{ RTF_DB : uses
+    APPLICATION_500000383 ||--o{ DATA_CACHE_STORE_BUCKET_DB : uses
+    APPLICATION_500000383 ||--o{ ENTITYSTORE_HIPED_DB : uses
+
+    %% Database to Table relationships
+    IDENTITYSTORE_DB ||--o{ IDENTITYSTORE_TABLE : has
+    IDENTITYSTORE_DB ||--o{ ACCOUNT_TABLE : has
+    IDENTITYSTORE_DB ||--o{ CUSTOMER_TABLE : has
+    IDENTITYSTORE_DB ||--o{ IDENTITY_PROFILE_TABLE : has
+    IDENTITYSTORE_DB ||--o{ CONTACT_PROFILE_TABLE : has
+    IDENTITYSTORE_DB ||--o{ BANK_ACCOUNT_DETAILS_TABLE : has
+    IDENTITYSTORE_DB ||--o{ REL_ID_TABLE : has
+    CUSTOMERDB_DB ||--o{ CUSTOMERS_TABLE : has
+    CUSTOMERDB_DB ||--o{ CUSTOMERS_1_TABLE : has
+    ANALYTICS_DB ||--o{ USER_EVENTS_TABLE : has
+    ANALYTICS_DB ||--o{ EVENTS_TABLE : has
+    CONTACT_PROFILE_DB ||--o{ BUSINESS_TABLE : has
+    CONTACT_PROFILE_DB ||--o{ ESTATEMENT_TABLE : has
+    CONTACT_PROFILE_DB ||--o{ OTHER_TABLE : has
+    CONTACT_PROFILE_DB ||--o{ SECURITY_TABLE : has
+    CONTACT_PROFILE_DB ||--o{ SERVICING_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ NATIONALITY_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ RELATIONSHIP_NAMES_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ EXTERNAL_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ OTHER_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ PRIMARY_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ SECONDARY_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ COMPANY_TABLE : has
+    IDENTITY_PROFILE_DB ||--o{ INDIVIDUAL_TABLE : has
+    DIGITAL_PROFILE_DB ||--o{ IP_ADDRESSES_TABLE : has
+    DIGITAL_PROFILE_DB ||--o{ IP_ADDRESSES_PROCESSED_TABLE : has
+    DIGITAL_PROFILE_DB ||--o{ DEVICES_TABLE : has
+    DIGITAL_PROFILE_DB ||--o{ DEVICES_PROCESSED_TABLE : has
+    IDENTITYSTORE_HIPED_DB ||--o{ IDENTITYSTORE_HIPED_TABLE : has
+    IDENTITYSTORE_HIPED_DB ||--o{ IDENTITYSTORE_HIPED_1_TABLE : has
+    IDENTITYSTORE_HIPED_DB ||--o{ IDENTITYSTORE_HIPED_2_TABLE : has
+    DATACACHESTORE_DB ||--o{ DATACACHESTORE_TABLE : has
+    DATACACHESTORE_DB ||--o{ DATACACHESTORE_1_TABLE : has
+    DATACACHESTORE_DB ||--o{ DATACACHESTORE_C360_CUSTOMER_TABLE : has
+    DATACACHESTORE_DB ||--o{ DATACACHESTORE_C360_ACCOUNT_TABLE : has
+    IDENTITYSTORE_DB ||--o{ IDENTITY_STORE_TABLE : has
+    IDENTITYSTORE_DB ||--o{ IDENTITY_STORE_1_TABLE : has
+    RTF_DB ||--o{ RTF_EVENT_TABLE : has
+    RTF_DB ||--o{ RTF_RTF_EVENT_TABLE : has
+    DATA_CACHE_STORE_BUCKET_DB ||--o{ DATA_CACHE_STORE_BUCKET_TABLE : has
+    ENTITYSTORE_HIPED_DB ||--o{ ENTITYSTORE_HIPED__DEFAULT__DEFAULT_TABLE : has
+    ENTITYSTORE_HIPED_DB ||--o{ ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_TABLE : has
+    ENTITYSTORE_HIPED_DB ||--o{ ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_TABLE : has
+    ENTITYSTORE_HIPED_DB ||--o{ ENTITYSTORE_HIPED_TABLE : has
+    ENTITYSTORE_HIPED_DB ||--o{ ENTITYSTORE_HIPED_1_TABLE : has
+    ENTITYSTORE_HIPED_DB ||--o{ ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_1_TABLE : has
+    ENTITYSTORE_HIPED_DB ||--o{ ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_1_TABLE : has
+
+    %% Table to Column relationships
+    IDENTITYSTORE_TABLE ||--o{ IDENTITYSTORE_COLUMNS : uses
+    ACCOUNT_TABLE ||--o{ ACCOUNT_COLUMNS : uses
+    CUSTOMER_TABLE ||--o{ CUSTOMER_COLUMNS : uses
+    IDENTITY_PROFILE_TABLE ||--o{ IDENTITY_PROFILE_COLUMNS : uses
+    CONTACT_PROFILE_TABLE ||--o{ CONTACT_PROFILE_COLUMNS : uses
+    BANK_ACCOUNT_DETAILS_TABLE ||--o{ BANK_ACCOUNT_DETAILS_COLUMNS : uses
+    REL_ID_TABLE ||--o{ REL_ID_COLUMNS : uses
+    CUSTOMERS_TABLE ||--o{ CUSTOMERS_COLUMNS : uses
+    CUSTOMERS_1_TABLE ||--o{ CUSTOMERS_1_COLUMNS : uses
+    USER_EVENTS_TABLE ||--o{ USER_EVENTS_COLUMNS : uses
+    EVENTS_TABLE ||--o{ EVENTS_COLUMNS : uses
+    BUSINESS_TABLE ||--o{ BUSINESS_COLUMNS : uses
+    ESTATEMENT_TABLE ||--o{ ESTATEMENT_COLUMNS : uses
+    OTHER_TABLE ||--o{ OTHER_COLUMNS : uses
+    SECURITY_TABLE ||--o{ SECURITY_COLUMNS : uses
+    SERVICING_TABLE ||--o{ SERVICING_COLUMNS : uses
+    NATIONALITY_TABLE ||--o{ NATIONALITY_COLUMNS : uses
+    RELATIONSHIP_NAMES_TABLE ||--o{ RELATIONSHIP_NAMES_COLUMNS : uses
+    EXTERNAL_TABLE ||--o{ EXTERNAL_COLUMNS : uses
+    OTHER_TABLE ||--o{ OTHER_COLUMNS : uses
+    PRIMARY_TABLE ||--o{ PRIMARY_COLUMNS : uses
+    SECONDARY_TABLE ||--o{ SECONDARY_COLUMNS : uses
+    COMPANY_TABLE ||--o{ COMPANY_COLUMNS : uses
+    INDIVIDUAL_TABLE ||--o{ INDIVIDUAL_COLUMNS : uses
+    IP_ADDRESSES_TABLE ||--o{ IP_ADDRESSES_COLUMNS : uses
+    IP_ADDRESSES_PROCESSED_TABLE ||--o{ IP_ADDRESSES_PROCESSED_COLUMNS : uses
+    DEVICES_TABLE ||--o{ DEVICES_COLUMNS : uses
+    DEVICES_PROCESSED_TABLE ||--o{ DEVICES_PROCESSED_COLUMNS : uses
+    IDENTITYSTORE_HIPED_TABLE ||--o{ IDENTITYSTORE_HIPED_COLUMNS : uses
+    IDENTITYSTORE_HIPED_1_TABLE ||--o{ IDENTITYSTORE_HIPED_1_COLUMNS : uses
+    IDENTITYSTORE_HIPED_2_TABLE ||--o{ IDENTITYSTORE_HIPED_2_COLUMNS : uses
+    DATACACHESTORE_TABLE ||--o{ DATACACHESTORE_COLUMNS : uses
+    DATACACHESTORE_1_TABLE ||--o{ DATACACHESTORE_1_COLUMNS : uses
+    DATACACHESTORE_C360_CUSTOMER_TABLE ||--o{ DATACACHESTORE_C360_CUSTOMER_COLUMNS : uses
+    DATACACHESTORE_C360_ACCOUNT_TABLE ||--o{ DATACACHESTORE_C360_ACCOUNT_COLUMNS : uses
+    IDENTITY_STORE_TABLE ||--o{ IDENTITY_STORE_COLUMNS : uses
+    IDENTITY_STORE_1_TABLE ||--o{ IDENTITY_STORE_1_COLUMNS : uses
+    RTF_EVENT_TABLE ||--o{ RTF_EVENT_COLUMNS : uses
+    RTF_RTF_EVENT_TABLE ||--o{ RTF_RTF_EVENT_COLUMNS : uses
+    DATA_CACHE_STORE_BUCKET_TABLE ||--o{ DATA_CACHE_STORE_BUCKET_COLUMNS : uses
+    ENTITYSTORE_HIPED__DEFAULT__DEFAULT_TABLE ||--o{ ENTITYSTORE_HIPED__DEFAULT__DEFAULT_COLUMNS : uses
+    ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_TABLE ||--o{ ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_COLUMNS : uses
+    ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_TABLE ||--o{ ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_COLUMNS : uses
+    ENTITYSTORE_HIPED_TABLE ||--o{ ENTITYSTORE_HIPED_COLUMNS : uses
+    ENTITYSTORE_HIPED_1_TABLE ||--o{ ENTITYSTORE_HIPED_1_COLUMNS : uses
+    ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_1_TABLE ||--o{ ENTITYSTORE_HIPED_LEGALENTITY_ACTIVE_1_COLUMNS : uses
+    ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_1_TABLE ||--o{ ENTITYSTORE_HIPED_COUNTERPARTYENTITY_ACTIVE_1_COLUMNS : uses

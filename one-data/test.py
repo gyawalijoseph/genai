@@ -1,16 +1,16 @@
 import json
 import re
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
+import uuid
 
-class MermaidERGenerator:
+class DynamicMermaidERGenerator:
     def __init__(self, application_id: str = "500000383"):
         self.application_id = application_id
     
     def generate_complete_diagram(self, json_data: str) -> str:
-        """Generate complete ER diagram with all databases"""
+        """Generate complete ER diagram with all valid databases"""
         data = json.loads(json_data)
         databases = self._parse_databases(data.get('databases', []))
         
@@ -31,56 +31,41 @@ class MermaidERGenerator:
         
         return "\n".join(lines)
     
-    def generate_individual_diagram(self, json_data: str, database_name: str) -> str:
-        """Generate diagram for a specific database"""
-        data = json.loads(json_data)
-        databases = self._parse_databases(data.get('databases', []))
-        
-        target_db = next((db for db in databases if db['name'] == database_name), None)
-        if not target_db:
-            raise ValueError(f"Database '{database_name}' not found")
-        
-        root_id = self._sanitize_id(database_name) + "_ROOT"
-        
+    def generate_individual_diagram(self, db: Dict) -> str:
+        """Generate ER diagram for a single database"""
         lines = [
             "erDiagram",
-            f"    {root_id} {{",
-            f'        string database_name "{database_name}"',
-            f'        string database_type "{target_db.get("type", "unknown")}"',
+            f"    APPLICATION_{self.application_id} {{",
+            f'        string application_id "{self.application_id}"',
             "    }",
             ""
         ]
         
-        # Generate tables and columns
-        table_ids = []
-        for entity in target_db.get('entities', []):
-            table_id = self._generate_table_section(lines, entity)
-            table_ids.append(table_id)
+        # Generate database entity and its tables
+        lines.extend(self._generate_database_section(db))
         
-        # Generate relationships for individual database
-        lines.append("    %% Relationships")
-        for entity in target_db.get('entities', []):
-            table_id = self._sanitize_id(entity['table_name']) + "_TABLE"
-            columns_id = self._sanitize_id(entity['table_name']) + "_COLUMNS"
-            
-            lines.append(f"    {root_id} ||--o{{ {table_id} : contains")
-            lines.append(f"    {table_id} ||--o{{ {columns_id} : has_columns")
+        # Generate relationships for this database only
+        lines.extend(self._generate_individual_relationships(db))
         
         return "\n".join(lines)
     
     def _parse_databases(self, databases_json: List[Dict]) -> List[Dict]:
-        """Parse and filter databases from JSON"""
+        """Parse and filter databases from JSON, skipping invalid or empty ones"""
         databases = []
         for db in databases_json:
             db_name = db.get('databaseName', '').strip()
-            if db_name and db_name != 'unknown':
+            entities = db.get('entities', [])
+            # Skip if database name is empty, 'unknown', or entities is empty
+            if db_name and db_name.lower() != 'unknown' and entities:
                 databases.append({
                     'name': db_name,
                     'type': db.get('databaseType', 'unknown'),
                     'bucket': db.get('bucketName', ''),
                     'cluster': db.get('clusterName', ''),
                     'schema': db.get('schemaName', ''),
-                    'entities': db.get('entities', [])
+                    'entities': entities,
+                    'server_host': db.get('serverHost', ''),
+                    'replica_set': db.get('replicaSet', '')
                 })
         return databases
     
@@ -99,15 +84,25 @@ class MermaidERGenerator:
             ""
         ])
         
-        # Table entities - ensure all tables are captured
-        for entity in db['entities']:
-            self._generate_table_section(lines, entity)
+        # Table entities - handle all tables including duplicates
+        processed_tables = {}
+        for idx, entity in enumerate(db['entities']):
+            table_name = entity.get('table_name', f'unknown_table_{idx}')
+            
+            # Handle duplicate table names by adding suffix
+            unique_table_name = table_name
+            counter = 1
+            while unique_table_name in processed_tables:
+                unique_table_name = f"{table_name}_{counter}"
+                counter += 1
+            
+            processed_tables[unique_table_name] = entity
+            self._generate_table_section(lines, entity, unique_table_name)
         
         return lines
     
-    def _generate_table_section(self, lines: List[str], entity: Dict) -> str:
+    def _generate_table_section(self, lines: List[str], entity: Dict, table_name: str) -> str:
         """Generate table and columns entities"""
-        table_name = entity.get('table_name', 'unknown_table')
         table_id = self._sanitize_id(table_name) + "_TABLE"
         columns_id = self._sanitize_id(table_name) + "_COLUMNS"
         
@@ -135,42 +130,135 @@ class MermaidERGenerator:
         return table_id
     
     def _format_column(self, column: Dict) -> str:
-        """Format column for Mermaid entity"""
+        """Format column for Mermaid entity with simplified CRUD notation"""
         col_name = column.get('column_name', 'unknown_column')
         crud = column.get('CRUD', 'unknown')
         datatype = column.get('datatype', 'unknown')
         
         sanitized_name = self._sanitize_column_name(col_name)
-        description = f"{crud}|{datatype}"
         
-        return f'{datatype} {sanitized_name} "{description}"'
+        # Convert CRUD operations to abbreviated form
+        crud_abbrev = self._abbreviate_crud(crud)
+        
+        return f'{datatype} {sanitized_name} "{crud_abbrev}"'
+    
+    def _abbreviate_crud(self, crud: str) -> str:
+        """Convert CRUD operations to abbreviated form"""
+        if not crud or crud.lower() == 'unknown':
+            return 'R'
+        
+        crud_lower = crud.lower()
+        abbreviations = []
+        
+        # Check for each operation in CRUD order
+        if 'create' in crud_lower or 'write' in crud_lower:
+            abbreviations.append('C')
+        if 'read' in crud_lower:
+            abbreviations.append('R')
+        if 'update' in crud_lower:
+            abbreviations.append('U')
+        if 'delete' in crud_lower:
+            abbreviations.append('D')
+        
+        return ''.join(abbreviations) if abbreviations else 'R'
     
     def _generate_relationships(self, databases: List[Dict]) -> List[str]:
-        """Generate all relationships"""
+        """Generate all relationships for the complete diagram"""
         lines = ["    %% Relationships"]
         
         # Application to Database relationships
         for db in databases:
             db_id = self._sanitize_id(db['name']) + "_DB"
-            lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : contains")
+            lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : uses")
         lines.append("")
         
         # Database to Table relationships
         lines.append("    %% Database to Table relationships")
         for db in databases:
             db_id = self._sanitize_id(db['name']) + "_DB"
-            for entity in db['entities']:
-                table_id = self._sanitize_id(entity['table_name']) + "_TABLE"
+            processed_tables = {}
+            
+            for idx, entity in enumerate(db['entities']):
+                table_name = entity.get('table_name', f'unknown_table_{idx}')
+                
+                # Handle duplicate table names
+                unique_table_name = table_name
+                counter = 1
+                while unique_table_name in processed_tables:
+                    unique_table_name = f"{table_name}_{counter}"
+                    counter += 1
+                
+                processed_tables[unique_table_name] = True
+                table_id = self._sanitize_id(unique_table_name) + "_TABLE"
                 lines.append(f"    {db_id} ||--o{{ {table_id} : has")
         lines.append("")
         
         # Table to Column relationships
         lines.append("    %% Table to Column relationships")
         for db in databases:
-            for entity in db['entities']:
-                table_id = self._sanitize_id(entity['table_name']) + "_TABLE"
-                columns_id = self._sanitize_id(entity['table_name']) + "_COLUMNS"
-                lines.append(f"    {table_id} ||--o{{ {columns_id} : contains")
+            processed_tables = {}
+            
+            for idx, entity in enumerate(db['entities']):
+                table_name = entity.get('table_name', f'unknown_table_{idx}')
+                
+                # Handle duplicate table names
+                unique_table_name = table_name
+                counter = 1
+                while unique_table_name in processed_tables:
+                    unique_table_name = f"{table_name}_{counter}"
+                    counter += 1
+                
+                processed_tables[unique_table_name] = True
+                table_id = self._sanitize_id(unique_table_name) + "_TABLE"
+                columns_id = self._sanitize_id(unique_table_name) + "_COLUMNS"
+                lines.append(f"    {table_id} ||--o{{ {columns_id} : uses")
+        
+        return lines
+    
+    def _generate_individual_relationships(self, db: Dict) -> List[str]:
+        """Generate relationships for a single database"""
+        lines = ["    %% Relationships"]
+        db_id = self._sanitize_id(db['name']) + "_DB"
+        
+        # Application to Database relationship
+        lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : uses")
+        lines.append("")
+        
+        # Database to Table relationships
+        lines.append("    %% Database to Table relationships")
+        processed_tables = {}
+        for idx, entity in enumerate(db['entities']):
+            table_name = entity.get('table_name', f'unknown_table_{idx}')
+            
+            # Handle duplicate table names
+            unique_table_name = table_name
+            counter = 1
+            while unique_table_name in processed_tables:
+                unique_table_name = f"{table_name}_{counter}"
+                counter += 1
+            
+            processed_tables[unique_table_name] = True
+            table_id = self._sanitize_id(unique_table_name) + "_TABLE"
+            lines.append(f"    {db_id} ||--o{{ {table_id} : has")
+        lines.append("")
+        
+        # Table to Column relationships
+        lines.append("    %% Table to Column relationships")
+        processed_tables = {}
+        for idx, entity in enumerate(db['entities']):
+            table_name = entity.get('table_name', f'unknown_table_{idx}')
+            
+            # Handle duplicate table names
+            unique_table_name = table_name
+            counter = 1
+            while unique_table_name in processed_tables:
+                unique_table_name = f"{table_name}_{counter}"
+                counter += 1
+            
+            processed_tables[unique_table_name] = True
+            table_id = self._sanitize_id(unique_table_name) + "_TABLE"
+            columns_id = self._sanitize_id(unique_table_name) + "_COLUMNS"
+            lines.append(f"    {table_id} ||--o{{ {columns_id} : uses")
         
         return lines
     
@@ -178,127 +266,116 @@ class MermaidERGenerator:
         """Sanitize text for Mermaid entity ID"""
         if not text:
             return "UNKNOWN"
-        return re.sub(r'[^A-Z0-9_]', '_', text.upper()).strip('_')
+        return re.sub(r'[^A-Z0-9.]', '_', text.upper()).replace('.', '_').strip('_')
     
     def _sanitize_column_name(self, text: str) -> str:
         """Sanitize column name"""
         if not text:
             return "unknown_column"
-        return re.sub(r'[^a-z0-9_.]', '_', text.lower()).strip('_')
+        return re.sub(r'[^a-z0-9.]', '_', text.lower()).replace('.', '_').strip('_')
 
-def process_local_spec(spec_path: str, output_dir: str = None) -> Dict[str, str]:
+def generate_mermaid_from_spec(spec_path: str, output_path: str = None, application_id: str = "500000383") -> str:
     """
-    Process local spec.json file and generate all diagrams
+    Generate Mermaid ER diagram from JSON specification file and individual diagrams for each database
     
     Args:
-        spec_path: Path to the spec.json file
-        output_dir: Directory to save output files (default: same as input file)
+        spec_path: Path to the JSON specification file
+        output_path: Optional output file path for complete diagram (if None, prints to console)
+        application_id: Application identifier for the root node
     
     Returns:
-        Dictionary with generated file paths
+        Generated Mermaid diagram as string (complete diagram)
     """
     # Validate input file
     spec_file = Path(spec_path)
     if not spec_file.exists():
-        raise FileNotFoundError(f"Spec file not found: {spec_path}")
+        raise FileNotFoundError(f"Specification file not found: {spec_path}")
     
     if not spec_file.suffix.lower() == '.json':
         raise ValueError(f"Input file must be a JSON file, got: {spec_file.suffix}")
-    
-    # Set output directory
-    if output_dir is None:
-        output_dir = spec_file.parent
-    else:
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
     
     # Read JSON file
     try:
         with open(spec_file, 'r', encoding='utf-8') as f:
             json_data = f.read()
     except Exception as e:
-        raise IOError(f"Error reading spec file: {e}")
-    
-    # Initialize generator
-    generator = MermaidERGenerator()
+        raise IOError(f"Error reading specification file: {e}")
     
     # Generate complete diagram
-    try:
-        complete_diagram = generator.generate_complete_diagram(json_data)
-        complete_output_path = output_dir / "complete_database_diagram.mmd"
-        
-        with open(complete_output_path, 'w', encoding='utf-8') as f:
-            f.write(complete_diagram)
-        
-        print(f"✓ Complete diagram saved: {complete_output_path}")
-        
-    except Exception as e:
-        raise RuntimeError(f"Error generating complete diagram: {e}")
+    generator = DynamicMermaidERGenerator(application_id)
+    diagram = generator.generate_complete_diagram(json_data)
     
-    # Parse databases for individual diagrams
-    try:
-        data = json.loads(json_data)
-        databases = generator._parse_databases(data.get('databases', []))
-        
-        individual_files = {}
-        
-        for db in databases:
-            db_name = db['name']
-            try:
-                individual_diagram = generator.generate_individual_diagram(json_data, db_name)
-                individual_output_path = output_dir / f"{db_name.lower()}_diagram.mmd"
-                
-                with open(individual_output_path, 'w', encoding='utf-8') as f:
-                    f.write(individual_diagram)
-                
-                individual_files[db_name] = str(individual_output_path)
-                print(f"✓ {db_name} diagram saved: {individual_output_path}")
-                
-            except Exception as e:
-                print(f"⚠ Warning: Could not generate diagram for {db_name}: {e}")
-                continue
-        
-        return {
-            'complete_diagram': str(complete_output_path),
-            'individual_diagrams': individual_files,
-            'total_databases': len(databases),
-            'successful_individual': len(individual_files)
-        }
-        
-    except Exception as e:
-        raise RuntimeError(f"Error processing individual diagrams: {e}")
+    # Parse databases for statistics and individual diagrams
+    data = json.loads(json_data)
+    databases = generator._parse_databases(data.get('databases', []))
+    
+    # Determine output directory
+    output_dir = Path(output_path).parent if output_path else Path.cwd()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate individual database diagrams
+    for db in databases:
+        db_diagram = generator.generate_individual_diagram(db)
+        db_filename = output_dir / f"{generator._sanitize_id(db['name'])}_diagram.mmd"
+        with open(db_filename, 'w', encoding='utf-8') as f:
+            f.write(db_diagram)
+        print(f"Individual diagram saved to: {db_filename}")
+    
+    # Save or print complete diagram
+    if output_path:
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(diagram)
+        print(f"Complete Mermaid diagram saved to: {output_path}")
+    else:
+        print(diagram)
+    
+    return diagram
 
 def main():
     """Command line interface"""
     if len(sys.argv) < 2:
-        print("Usage: python mermaid_generator.py <spec.json> [output_directory]")
-        print("Example: python mermaid_generator.py ./spec1.json ./output/")
+        print("Usage: python dynamic_mermaid_generator.py <spec.json> [output.mmd] [application_id]")
+        print("Examples:")
+        print("  python dynamic_mermaid_generator.py spec.json")
+        print("  python dynamic_mermaid_generator.py spec.json diagram.mmd")
+        print("  python dynamic_mermaid_generator.py spec.json diagram.mmd APP_12345")
         sys.exit(1)
     
     spec_path = sys.argv[1]
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else None
+    output_path = sys.argv[2] if len(sys.argv) > 2 else None
+    application_id = sys.argv[3] if len(sys.argv) > 3 else "500000383"
     
     try:
-        print(f"Processing spec file: {spec_path}")
-        results = process_local_spec(spec_path, output_dir)
+        print(f"Processing specification file: {spec_path}")
+        if application_id != "500000383":
+            print(f"Using application ID: {application_id}")
         
-        print(f"\n🎉 Success! Generated diagrams:")
-        print(f"📊 Complete diagram: {results['complete_diagram']}")
-        print(f"📈 Individual diagrams: {results['successful_individual']}/{results['total_databases']}")
+        diagram = generate_mermaid_from_spec(spec_path, output_path, application_id)
         
-        if results['individual_diagrams']:
-            print("\nIndividual database diagrams:")
-            for db_name, file_path in results['individual_diagrams'].items():
-                print(f"  • {db_name}: {file_path}")
-                
+        # Get statistics
+        data = json.loads(Path(spec_path).read_text())
+        databases = DynamicMermaidERGenerator(application_id)._parse_databases(data.get('databases', []))
+        
+        total_tables = sum(len(db.get('entities', [])) for db in databases)
+        total_columns = sum(len(entity.get('columns', [])) 
+                          for db in databases 
+                          for entity in db.get('entities', []))
+        
+        print(f"\nDiagram generated successfully!")
+        print(f"Statistics:")
+        print(f"  - Databases: {len(databases)}")
+        print(f"  - Tables: {total_tables}")
+        print(f"  - Columns: {total_columns}")
+        
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         sys.exit(1)
 
-# Quick utility functions (keep for backwards compatibility)
-def quick_generate_from_local_spec(spec_path: str):
-    """Quick one-liner to process local spec file"""
-    return process_local_spec(spec_path)
+def quick_generate(spec_file: str, app_id: str = "500000383") -> str:
+    """Quick one-liner to generate diagram"""
+    return generate_mermaid_from_spec(spec_file, application_id=app_id)
 
 if __name__ == "__main__":
     main()
