@@ -79,8 +79,13 @@ class DynamicMermaidERGenerator:
         lines.extend([
             f"    %% {db['name']} Database",
             f"    {db_id} {{",
-            f'        string database_name "{db["name"]}"',
-            f'        string database_type "{db["type"]}"',
+        ])
+
+        # Only add database_type if it's not "unknown"
+        if db["type"] != "unknown":
+            lines.append(f'        string database_type "{db["type"]}"')
+
+        lines.extend([
             "    }",
             ""
         ])
