@@ -168,25 +168,28 @@ class DynamicMermaidERGenerator:
             lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : contains")
         lines.append("")
         
-        # Database to Table relationships
+        # Database to Table relationships (only for tables with columns)
         lines.append("    %% Database to Table relationships")
         for db in databases:
             db_id = self._sanitize_id(db['name'])
             processed_tables = {}
-            
+
             for idx, entity in enumerate(db['entities']):
                 table_name = entity.get('table_name', f'unknown_table_{idx}')
-                
-                # Handle duplicate table names
-                unique_table_name = table_name
-                counter = 1
-                while unique_table_name in processed_tables:
-                    unique_table_name = f"{table_name}_{counter}"
-                    counter += 1
-                
-                processed_tables[unique_table_name] = True
-                table_id = self._sanitize_id(unique_table_name)
-                lines.append(f"    {db_id} ||--o{{ {table_id} : has")
+                columns = entity.get('columns', [])
+
+                # Only create relationship if table has columns
+                if columns:
+                    # Handle duplicate table names
+                    unique_table_name = table_name
+                    counter = 1
+                    while unique_table_name in processed_tables:
+                        unique_table_name = f"{table_name}_{counter}"
+                        counter += 1
+
+                    processed_tables[unique_table_name] = True
+                    table_id = self._sanitize_id(unique_table_name)
+                    lines.append(f"    {db_id} ||--o{{ {table_id} : has")
         lines.append("")
         
         
@@ -201,22 +204,25 @@ class DynamicMermaidERGenerator:
         lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : contains")
         lines.append("")
         
-        # Database to Table relationships
+        # Database to Table relationships (only for tables with columns)
         lines.append("    %% Database to Table relationships")
         processed_tables = {}
         for idx, entity in enumerate(db['entities']):
             table_name = entity.get('table_name', f'unknown_table_{idx}')
-            
-            # Handle duplicate table names
-            unique_table_name = table_name
-            counter = 1
-            while unique_table_name in processed_tables:
-                unique_table_name = f"{table_name}_{counter}"
-                counter += 1
-            
-            processed_tables[unique_table_name] = True
-            table_id = self._sanitize_id(unique_table_name)
-            lines.append(f"    {db_id} ||--o{{ {table_id} : has")
+            columns = entity.get('columns', [])
+
+            # Only create relationship if table has columns
+            if columns:
+                # Handle duplicate table names
+                unique_table_name = table_name
+                counter = 1
+                while unique_table_name in processed_tables:
+                    unique_table_name = f"{table_name}_{counter}"
+                    counter += 1
+
+                processed_tables[unique_table_name] = True
+                table_id = self._sanitize_id(unique_table_name)
+                lines.append(f"    {db_id} ||--o{{ {table_id} : has")
         lines.append("")
 
 
