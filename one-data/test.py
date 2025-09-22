@@ -122,7 +122,7 @@ class DynamicMermaidERGenerator:
             ""
         ])
 
-        # Columns entity - separate entity with just column information
+        # Columns entity - just column data, no header info
         columns = entity.get('columns', [])
         lines.append(f"    {columns_id} {{")
 
@@ -227,6 +227,13 @@ class DynamicMermaidERGenerator:
                     columns_id = self._sanitize_id(unique_table_name) + "_columns"
                     lines.append(f"    {table_id} ||--o{{ {columns_id} : contains")
 
+        # Add styling for application entity
+        lines.extend([
+            "",
+            f"    classDef appStyle fill:#e1f5fe,stroke:#01579b,stroke-width:3px",
+            f"    class APPLICATION_{self.application_id} appStyle"
+        ])
+
         return lines
     
     def _generate_individual_relationships(self, db: Dict) -> List[str]:
@@ -279,6 +286,13 @@ class DynamicMermaidERGenerator:
                 table_id = self._sanitize_id(unique_table_name)
                 columns_id = self._sanitize_id(unique_table_name) + "_columns"
                 lines.append(f"    {table_id} ||--o{{ {columns_id} : contains")
+
+        # Add styling for application entity
+        lines.extend([
+            "",
+            f"    classDef appStyle fill:#e1f5fe,stroke:#01579b,stroke-width:3px",
+            f"    class APPLICATION_{self.application_id} appStyle"
+        ])
 
         return lines
 
