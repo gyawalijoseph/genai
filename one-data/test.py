@@ -87,20 +87,23 @@ class DynamicMermaidERGenerator:
             ""
         ])
         
-        # Table entities - handle all tables including duplicates
+        # Table entities - only create tables that have columns
         processed_tables = {}
         for idx, entity in enumerate(db['entities']):
             table_name = entity.get('table_name', f'unknown_table_{idx}')
-            
-            # Handle duplicate table names by adding suffix
-            unique_table_name = table_name
-            counter = 1
-            while unique_table_name in processed_tables:
-                unique_table_name = f"{table_name}_{counter}"
-                counter += 1
-            
-            processed_tables[unique_table_name] = entity
-            self._generate_table_section(lines, entity, unique_table_name)
+            columns = entity.get('columns', [])
+
+            # Only create table if it has columns
+            if columns:
+                # Handle duplicate table names by adding suffix
+                unique_table_name = table_name
+                counter = 1
+                while unique_table_name in processed_tables:
+                    unique_table_name = f"{table_name}_{counter}"
+                    counter += 1
+
+                processed_tables[unique_table_name] = entity
+                self._generate_table_section(lines, entity, unique_table_name)
         
         return lines
     
@@ -189,7 +192,7 @@ class DynamicMermaidERGenerator:
 
                     processed_tables[unique_table_name] = True
                     table_id = self._sanitize_id(unique_table_name)
-                    lines.append(f"    {db_id} ||--o{{ {table_id} : has")
+                    lines.append(f"    {db_id} ||--o{{ {table_id} : contains")
         lines.append("")
         
         
