@@ -105,22 +105,15 @@ class DynamicMermaidERGenerator:
         return lines
     
     def _generate_table_section(self, lines: List[str], entity: Dict, table_name: str) -> str:
-        """Generate table and columns entities"""
+        """Generate table entity with embedded columns"""
         table_id = self._sanitize_id(table_name)
-        columns_id = self._sanitize_id(table_name) + "_columns"
 
-        # Table entity - just the table name as header
-        lines.extend([
-            f"    {table_id} {{",
-            f'        string name "{table_name}"',
-            "    }",
-            ""
-        ])
+        # Table entity with embedded columns
+        lines.append(f"    {table_id} {{")
+        lines.append(f'        string table_name "{table_name}"')
 
-        # Columns entity - just column information, no redundant header
+        # Add columns directly in the table entity
         columns = entity.get('columns', [])
-        lines.append(f"    {columns_id} {{")
-
         if columns:
             for col in columns:
                 col_line = self._format_column(col)
@@ -226,23 +219,6 @@ class DynamicMermaidERGenerator:
             lines.append(f"    {db_id} ||--o{{ {table_id} : has")
         lines.append("")
 
-        # Table to Column relationships for individual database
-        lines.append("    %% Table to Column relationships")
-        processed_tables = {}
-        for idx, entity in enumerate(db['entities']):
-            table_name = entity.get('table_name', f'unknown_table_{idx}')
-
-            # Handle duplicate table names
-            unique_table_name = table_name
-            counter = 1
-            while unique_table_name in processed_tables:
-                unique_table_name = f"{table_name}_{counter}"
-                counter += 1
-
-            processed_tables[unique_table_name] = True
-            table_id = self._sanitize_id(unique_table_name)
-            columns_id = self._sanitize_id(unique_table_name) + "_columns"
-            lines.append(f"    {table_id} ||--o{{ {columns_id} : has")
 
         return lines
 
