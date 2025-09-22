@@ -20,7 +20,6 @@ class DynamicMermaidERGenerator:
         lines = [
             "erDiagram",
             f"    APPLICATION_{self.application_id} {{",
-            f'        string application_id "{self.application_id}"',
             "    }",
             ""
         ]
@@ -39,7 +38,6 @@ class DynamicMermaidERGenerator:
         lines = [
             "erDiagram",
             f"    APPLICATION_{self.application_id} {{",
-            f'        string application_id "{self.application_id}"',
             "    }",
             ""
         ]
@@ -168,7 +166,7 @@ class DynamicMermaidERGenerator:
         # Application to Database relationships
         for db in databases:
             db_id = self._sanitize_id(db['name'])
-            lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : contains")
+            lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : has")
         lines.append("")
         
         # Database to Table relationships (only for tables with columns)
