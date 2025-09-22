@@ -6,12 +6,14 @@ from typing import Dict, List, Optional
 import uuid
 
 class DynamicMermaidERGenerator:
-    def __init__(self, application_id: str = "500000383"):
+    def __init__(self, application_id: str = None):
         self.application_id = application_id
     
     def generate_complete_diagram(self, json_data: str) -> str:
         """Generate complete ER diagram with all valid databases"""
         data = json.loads(json_data)
+        if self.application_id is None:
+            self.application_id = data.get('application_id', '500000383')
         databases = self._parse_databases(data.get('databases', []))
         
         lines = [
@@ -72,7 +74,7 @@ class DynamicMermaidERGenerator:
     def _generate_database_section(self, db: Dict) -> List[str]:
         """Generate database entity and its tables"""
         lines = []
-        db_id = self._sanitize_id(db['name']) + "_DB"
+        db_id = self._sanitize_id(db['name'])
         
         # Database entity
         lines.extend([
@@ -103,8 +105,8 @@ class DynamicMermaidERGenerator:
     
     def _generate_table_section(self, lines: List[str], entity: Dict, table_name: str) -> str:
         """Generate table and columns entities"""
-        table_id = self._sanitize_id(table_name) + "_TABLE"
-        columns_id = self._sanitize_id(table_name) + "_COLUMNS"
+        table_id = self._sanitize_id(table_name)
+        columns_id = self._sanitize_id(table_name) + "_COLS"
         
         # Table entity
         lines.extend([
@@ -168,14 +170,14 @@ class DynamicMermaidERGenerator:
         
         # Application to Database relationships
         for db in databases:
-            db_id = self._sanitize_id(db['name']) + "_DB"
+            db_id = self._sanitize_id(db['name'])
             lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : uses")
         lines.append("")
         
         # Database to Table relationships
         lines.append("    %% Database to Table relationships")
         for db in databases:
-            db_id = self._sanitize_id(db['name']) + "_DB"
+            db_id = self._sanitize_id(db['name'])
             processed_tables = {}
             
             for idx, entity in enumerate(db['entities']):
@@ -189,7 +191,7 @@ class DynamicMermaidERGenerator:
                     counter += 1
                 
                 processed_tables[unique_table_name] = True
-                table_id = self._sanitize_id(unique_table_name) + "_TABLE"
+                table_id = self._sanitize_id(unique_table_name)
                 lines.append(f"    {db_id} ||--o{{ {table_id} : has")
         lines.append("")
         
@@ -209,8 +211,8 @@ class DynamicMermaidERGenerator:
                     counter += 1
                 
                 processed_tables[unique_table_name] = True
-                table_id = self._sanitize_id(unique_table_name) + "_TABLE"
-                columns_id = self._sanitize_id(unique_table_name) + "_COLUMNS"
+                table_id = self._sanitize_id(unique_table_name)
+                columns_id = self._sanitize_id(unique_table_name) + "_COLS"
                 lines.append(f"    {table_id} ||--o{{ {columns_id} : uses")
         
         return lines
@@ -218,7 +220,7 @@ class DynamicMermaidERGenerator:
     def _generate_individual_relationships(self, db: Dict) -> List[str]:
         """Generate relationships for a single database"""
         lines = ["    %% Relationships"]
-        db_id = self._sanitize_id(db['name']) + "_DB"
+        db_id = self._sanitize_id(db['name'])
         
         # Application to Database relationship
         lines.append(f"    APPLICATION_{self.application_id} ||--o{{ {db_id} : uses")
@@ -274,7 +276,7 @@ class DynamicMermaidERGenerator:
             return "unknown_column"
         return re.sub(r'[^a-z0-9.]', '_', text.lower()).replace('.', '_').strip('_')
 
-def generate_mermaid_from_spec(spec_path: str, output_path: str = None, application_id: str = "500000383") -> str:
+def generate_mermaid_from_spec(spec_path: str, output_path: str = None, application_id: str = None) -> str:
     """
     Generate Mermaid ER diagram from JSON specification file and individual diagrams for each database
     
@@ -345,11 +347,11 @@ def main():
     
     spec_path = sys.argv[1]
     output_path = sys.argv[2] if len(sys.argv) > 2 else None
-    application_id = sys.argv[3] if len(sys.argv) > 3 else "500000383"
+    application_id = sys.argv[3] if len(sys.argv) > 3 else None
     
     try:
         print(f"Processing specification file: {spec_path}")
-        if application_id != "500000383":
+        if application_id:
             print(f"Using application ID: {application_id}")
         
         diagram = generate_mermaid_from_spec(spec_path, output_path, application_id)
@@ -373,7 +375,7 @@ def main():
         print(f"Error: {e}")
         sys.exit(1)
 
-def quick_generate(spec_file: str, app_id: str = "500000383") -> str:
+def quick_generate(spec_file: str, app_id: str = None) -> str:
     """Quick one-liner to generate diagram"""
     return generate_mermaid_from_spec(spec_file, application_id=app_id)
 
